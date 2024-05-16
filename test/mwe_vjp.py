@@ -49,9 +49,8 @@ analytical = lambda w: torch.mm((torch.mm(x, w.T) + bias), w)
 jacobian_analytical = lambda w: 0.5 * torch.norm(analytical(w), p=2)**2
 print("Step 2: ", jacobian_analytical(weight), "\n")
 
-# 3. Why does jacrev not work here when .backward() works?
+# 3. Differentiate w.r.t. network parameter
 w2 = weight.clone().detach().requires_grad_(True)
-print("w2", w2)
 
 vjp_norm = jacobian_input(weight)
 vjp_norm.backward()

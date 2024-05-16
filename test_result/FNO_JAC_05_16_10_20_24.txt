@@ -1,0 +1,8 @@
+Model Size: 0.4554557800292969
+Loss Type: JAC
+Batch Size: 100
+Training Loss: tensor(0.0944, device='cuda:0', grad_fn=<AddBackward0>)
+Learned LE: [-5.5420501e-03 -2.0936115e+01 -5.1856697e+01]
+True LE: [ 6.1745816e-01  6.8753832e-03 -1.4309399e+01]
+Learned mean: tensor([ 5.3721,  6.1412, 20.1001], device='cuda:0', grad_fn=<MeanBackward1>)
+True mean: tensor([ 0.8435,  0.8419, 24.7300])
