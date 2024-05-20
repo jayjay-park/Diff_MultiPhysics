@@ -105,18 +105,27 @@ def main(logger, loss_type):
             traj_loader = DataLoader(traj_data, batch_size=batch_size, shuffle=False)
             Jac = torch.randn(traj_gpu.shape[0], dim, dim).cuda()
             i = 0
+
             for traj in traj_loader:
-                # print("shape", traj)
-                jac = torch.func.jacrev(f)
+
+                jac = torch.func.jacrev(model)
                 x = traj[0].unsqueeze(dim=2).to('cuda')
-                batchsize = x.shape[0]
                 cur_model_J = jac(x)
                 squeezed_J = cur_model_J[:, :, 0, :, :, 0]
-                non_zero_indices = torch.nonzero(squeezed_J)
-                non_zero_values = squeezed_J[non_zero_indices[:, 0], non_zero_indices[:, 1], non_zero_indices[:, 2], non_zero_indices[:, 3]]
-                learned_J = non_zero_values.reshape(batchsize, 3, 3)
-                Jac[i:i+batchsize] = learned_J
-                i +=batchsize
+                learned_J = [squeezed_J[in_out_pair, :, in_out_pair, :] for in_out_pair in range(batch_size)]
+                learned_J = torch.stack(learned_J, dim=0).cuda()
+
+                # print("shape", traj)
+                # jac = torch.func.jacrev(f)
+                # x = traj[0].unsqueeze(dim=2).to('cuda')
+                # batchsize = x.shape[0]
+                # cur_model_J = jac(x)
+                # squeezed_J = cur_model_J[:, :, 0, :, :, 0]
+                # non_zero_indices = torch.nonzero(squeezed_J)
+                # non_zero_values = squeezed_J[non_zero_indices[:, 0], non_zero_indices[:, 1], non_zero_indices[:, 2], non_zero_indices[:, 3]]
+                # learned_J = non_zero_values.reshape(batchsize, 3, 3)
+                Jac[i:i+batch_size] = learned_J
+                i +=batch_size
             print(Jac)
 
         Q = torch.rand(dim,dim).to(device)
@@ -188,24 +197,25 @@ def main(logger, loss_type):
         return
 
     print("Creating Dataset")
-    n_train = 3000
-    batch_size = 100
-    dataset = create_data([lorenz, 3, 0.01], n_train=n_train, n_test=0, n_val=0, n_trans=0)
+    n_train = 4000
+    n_test = 3000
+    batch_size = 200
+    dataset = create_data([lorenz, 3, 0.01], n_train=n_train, n_test=n_test, n_val=0, n_trans=0)
     train_list = [dataset[0], dataset[1]]
     val_list = [dataset[2], dataset[3]]
     test_list = [dataset[4], dataset[5]]
 
     train_data = TensorDataset(*train_list)
-    val_data = TensorDataset(*val_list)
+    test_data = TensorDataset(*test_list)
     dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=False)
-    val_dataloader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
     print("Mini-batch: ", len(dataloader), dataloader.batch_size)
 
     model = FNO(
         in_channels=3,
         out_channels=3,
-        num_fno_modes=3,
-        padding=4,
+        num_fno_modes=4,
+        padding=5,
         dimension=1,
         latent_channels=128
     ).to('cuda')
@@ -223,14 +233,17 @@ def main(logger, loss_type):
     n_store, k  = 100, 0
     num_epochs = 5000
     time_step = 0.01
+    reg_param = 2.0
     jac_diff_train, jac_diff_test = torch.empty(n_store+1), torch.empty(n_store+1)
     print("Computing analytical Jacobian")
     t = torch.linspace(0, time_step, 2).cuda()
-    threshold = 0.005
+    threshold = 0.00005
     f = lambda x: torchdiffeq.odeint(lorenz, x, t, method="rk4")[1]
     torch.cuda.empty_cache()
     timer = Timer()
     elapsed_time_train = []
+    jac_diff = []
+    mse_diff = []
 
     if loss_type == "JAC":
         True_j = torch.zeros(n_train, 3)
@@ -248,8 +261,10 @@ def main(logger, loss_type):
     print("Beginning training")
     for epoch in range(num_epochs):
         start_time = time.time()
-        full_loss = 0.0
+        full_loss, full_test_loss = 0.0, 0.0
         idx = 0
+        mse = 0.
+        jac = 0.
         for data in dataloader:
             optimizer.zero_grad()
             y_true = data[1].to('cuda')
@@ -258,30 +273,42 @@ def main(logger, loss_type):
             # MSE Loss
             loss_mse = criterion(y_pred.view(batch_size, -1), y_true.view(batch_size, -1))
             loss = loss_mse / torch.norm(y_true, p=2)
+            mse += loss.detach().cpu().numpy()
             
             if loss_type == "JAC":
                 with timer:
                     x = data[0].unsqueeze(dim=2).to('cuda')
                     output, vjp_func = vjp(model, x)
-
                     cotangent = torch.ones_like(x)
                     vjp_out = vjp_func(cotangent)[0].squeeze()
 
                     jac_norm_diff = criterion(True_J[idx], vjp_out)
-                    reg_param = 500.0
+                    jac += jac_norm_diff.detach().cpu().numpy()
                     loss += (jac_norm_diff / torch.norm(True_J[idx]))*reg_param
-                        
+    
             full_loss += loss
             idx += 1
             end_time = time.time()  
             elapsed_time_train.append(end_time - start_time)
             
+        mse_diff.append(mse)
+        jac_diff.append(jac)
+        print(mse, jac)
         full_loss.backward()
         optimizer.step()
-        print("epoch: ", epoch, "loss: ", full_loss)
+        
+        for test_data in test_dataloader:
+            y_test_true = test_data[1].to('cuda')
+            y_test_pred = model(test_data[0].unsqueeze(dim=2).to('cuda'))
+            test_loss = criterion(y_test_pred.view(batch_size, -1), y_test_true.view(batch_size, -1))
+            full_test_loss += test_loss
+        
+        print("epoch: ", epoch, "loss: ", full_loss.item(), "test loss: ", full_test_loss.item())
+
         if full_loss < threshold:
             print("Stopping early as the loss is below the threshold.")
             break
+        
 
     print("Finished Computing")
     model_size = model_size(model)
@@ -301,9 +328,27 @@ def main(logger, loss_type):
             writer.writerow([epoch, elapsed_time])
     
 
+
     print("Creating plot...")
     phase_path = f"../plot/Phase_plot/FNO_Modulus_{loss_type}.png"
     plot_attractor(model, [lorenz, 3, 0.01], 50, phase_path)
+
+    print("Create loss plot")
+    jac_diff = np.asarray(jac_diff)
+    print(jac_diff.shape)
+    mse_diff = np.asarray(mse_diff)
+    path = f"../plot/Loss/FNO_Modulus_{loss_type}.png"
+
+    fig, ax = subplots()
+    ax.plot(jac_diff[10:], "P-", lw=2.0, ms=5.0, label=r"$\|J^Tv - \hat{J}^Tv\|$")
+    ax.plot(mse_diff[10:], "P-", lw=2.0, ms=5.0, label="MSE")
+    ax.set_xlabel("Epochs",fontsize=24)
+    ax.xaxis.set_tick_params(labelsize=24)
+    ax.yaxis.set_tick_params(labelsize=24)
+    ax.legend(fontsize=24)
+    ax.grid(True)
+    tight_layout()
+    savefig(path, bbox_inches ='tight', pad_inches = 0.1)
 
     # compute LE
     torch.cuda.empty_cache()
@@ -314,8 +359,13 @@ def main(logger, loss_type):
     init_point = torch.randn(dim)
     learned_traj = torch.empty_like(true_traj).cuda()
     learned_traj[0] = init_point
+    print(learned_traj.shape)
     for i in range(1, len(learned_traj)):
-        learned_traj[i] = model(learned_traj[i-1].reshape(1, dim, 1).cuda()).reshape(dim,)
+        out = model(learned_traj[i-1].reshape(1, dim, 1).cuda()).reshape(dim,-1)
+        print(out)
+        learned_traj[i] = out.squeeze()
+
+    print("shape", learned_traj.shape)
     
     print("Computing LEs of NN...")
     learned_LE = lyap_exps([model, dim, 0.01], "lorenz", learned_traj, true_traj.shape[0], batch_size).detach().cpu().numpy()
@@ -336,7 +386,8 @@ def main(logger, loss_type):
     logger.info("%s: %s", "True LE", str(True_LE))
     logger.info("%s: %s", "Learned mean", str(Learned_mean))
     logger.info("%s: %s", "True mean", str(True_mean))
-
+    logger.info("%s: %s", "MSE diff", str(mse_diff[-1]))
+    logger.info("%s: %s", "JAC diff", str(jac_diff[-1]))
 if __name__ == "__main__":
 
     start_time = datetime.datetime.now().strftime("%m_%d_%H_%M_%S")
@@ -346,3 +397,5 @@ if __name__ == "__main__":
 
     # call main
     main(logger, "JAC")
+    # MSE | epoch:  1599 loss:  4.928406633553095e-05 test loss:  0.0015732439933344722
+    # JAC | epoch:  2724 loss:  4.7205154260154814e-05 test loss:  0.00018358735542278737

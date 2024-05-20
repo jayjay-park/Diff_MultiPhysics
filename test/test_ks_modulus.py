@@ -188,8 +188,8 @@ def main(logger, loss_type):
         return
 
     print("Creating Dataset")
-    n_train = 3000
-    batch_size = 100
+    n_train = 4000
+    batch_size = 200
     dataset = create_data([lorenz, 3, 0.01], n_train=n_train, n_test=0, n_val=0, n_trans=0)
     train_list = [dataset[0], dataset[1]]
     val_list = [dataset[2], dataset[3]]
