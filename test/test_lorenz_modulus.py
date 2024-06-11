@@ -214,8 +214,8 @@ def main(logger, loss_type):
     model = FNO(
         in_channels=3,
         out_channels=3,
-        num_fno_modes=4,
-        padding=5,
+        num_fno_modes=3,
+        padding=4,
         dimension=1,
         latent_channels=128
     ).to('cuda')

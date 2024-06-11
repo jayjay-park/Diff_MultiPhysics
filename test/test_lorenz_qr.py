@@ -114,16 +114,6 @@ def main(logger, loss_type):
                 squeezed_J = cur_model_J[:, :, 0, :, :, 0]
                 learned_J = [squeezed_J[in_out_pair, :, in_out_pair, :] for in_out_pair in range(batch_size)]
                 learned_J = torch.stack(learned_J, dim=0).cuda()
-
-                # print("shape", traj)
-                # jac = torch.func.jacrev(f)
-                # x = traj[0].unsqueeze(dim=2).to('cuda')
-                # batchsize = x.shape[0]
-                # cur_model_J = jac(x)
-                # squeezed_J = cur_model_J[:, :, 0, :, :, 0]
-                # non_zero_indices = torch.nonzero(squeezed_J)
-                # non_zero_values = squeezed_J[non_zero_indices[:, 0], non_zero_indices[:, 1], non_zero_indices[:, 2], non_zero_indices[:, 3]]
-                # learned_J = non_zero_values.reshape(batchsize, 3, 3)
                 Jac[i:i+batch_size] = learned_J
                 i +=batch_size
             print(Jac)
@@ -200,6 +190,8 @@ def main(logger, loss_type):
     n_train = 4000
     n_test = 3000
     batch_size = 200
+    dim = 3
+    r = 3
     dataset = create_data([lorenz, 3, 0.01], n_train=n_train, n_test=n_test, n_val=0, n_trans=0)
     train_list = [dataset[0], dataset[1]]
     val_list = [dataset[2], dataset[3]]
@@ -245,23 +237,31 @@ def main(logger, loss_type):
     jac_diff = []
     mse_diff = []
 
-    if loss_type == "JAC":
-        # compute full Jacobian
-        print("Computing analytical Jacobian")
-        f = lambda x: lorenz(0, x)
-        true_jac_fn = torch.vmap(torch.func.jacrev(f))
-        True_J = true_jac_fn(train_list[0])
-        Test_J = true_jac_fn(test_list[0])
+    x = data[0].unsqueeze(dim=2).to('cuda')
+    output, vjp_func = vjp(model, x)
+    Q_list_summed = Q_list[idx].sum(dim=-1, keepdim=True) #[200, 3, 1]
+    vjp_out = vjp_func(Q_list_summed)[0] #[200, 3, 1]
 
-        # cotangent multiply
-        True_j = torch.zeros(n_train, 3)
+
+    if loss_type == "JAC":
+
+        # create random matrix by n x r
+        randm = torch.randn(n_train, dim, r)
+        # randm = torch.eye(*(dim, r))
+
+        traj, vjp_lorenz = vjp(lorenz, 0., x)
+        True_J = vjp_lorenz(randm)[1]
+
+
+        True_j = torch.zeros(n_train, dim, r)
+        Q_list = torch.zeros(n_train, dim, r)
         for j in range(n_train):
-            x = train_list[0][j]
-            cotangent = torch.ones_like(x) #size: [3]
-            output, vjp_tru_func = vjp(f, x)
-            res = vjp_tru_func(cotangent)[0]
-            True_j[j] = res
-        True_J = True_j.reshape(len(dataloader), dataloader.batch_size, 3).cuda()
+            approx = torch.mm(True_J_full[j].T, randm)
+            Q, R = torch.linalg.qr(approx)
+            True_j[j] = torch.mm(True_J_full[j].T, Q)
+            Q_list[j] = Q
+        True_J = True_j.reshape(len(dataloader), dataloader.batch_size, dim, r).cuda()
+        Q_list = True_j.reshape(len(dataloader), dataloader.batch_size, dim, r).cuda()
 
         print("Sanity Check: \n", True_j[0], True_j[batch_size], True_j[2*batch_size], True_j[3*batch_size])
         print("True: ", True_J[0:4, 0])
@@ -287,8 +287,8 @@ def main(logger, loss_type):
                 with timer:
                     x = data[0].unsqueeze(dim=2).to('cuda')
                     output, vjp_func = vjp(model, x)
-                    cotangent = torch.ones_like(x)
-                    vjp_out = vjp_func(cotangent)[0].squeeze()
+                    Q_list_summed = Q_list[idx].sum(dim=-1, keepdim=True) #[200, 3, 1]
+                    vjp_out = vjp_func(Q_list_summed)[0] #[200, 3, 1]
 
                     jac_norm_diff = criterion(True_J[idx], vjp_out)
                     jac += jac_norm_diff.detach().cpu().numpy()
@@ -358,6 +358,11 @@ def main(logger, loss_type):
     tight_layout()
     savefig(path, bbox_inches ='tight', pad_inches = 0.1)
 
+    logger.info("%s: %s", "Model Size", str(model_size))
+    logger.info("%s: %s", "Loss Type", str(loss_type))
+    logger.info("%s: %s", "Batch Size", str(batch_size))
+    logger.info("%s: %s", "Training Loss", str(full_loss))
+
     # compute LE
     torch.cuda.empty_cache()
     dim = 3
@@ -386,10 +391,7 @@ def main(logger, loss_type):
     True_var = torch.var(true_traj, dim = 0)
     Learned_var = torch.var(learned_traj, dim=0)
 
-    logger.info("%s: %s", "Model Size", str(model_size))
-    logger.info("%s: %s", "Loss Type", str(loss_type))
-    logger.info("%s: %s", "Batch Size", str(batch_size))
-    logger.info("%s: %s", "Training Loss", str(full_loss))
+
     logger.info("%s: %s", "Learned LE", str(learned_LE))
     logger.info("%s: %s", "True LE", str(True_LE))
     logger.info("%s: %s", "Learned mean", str(Learned_mean))
