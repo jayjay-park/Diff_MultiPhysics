@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.autograd.functional as F
 import torch.optim as optim
-import torchdiffeq
 import datetime
 import numpy as np
 import argparse
@@ -46,7 +45,7 @@ def plot_solution_darcy(test_loaders, path,
         sample = test_loaders[index]
         x_orig = sample['permeability']
         x = sample['permeability'][index, 0, :, :] # [32, 1, 64, 64]
-        print("x:", x)
+        # print("x:", x)
         y = sample['darcy'][index, 0, :, :] # Ground-truth
         out = model(x_orig.to('cuda')) # Model prediction
         out = out[index, 0, :, :]
@@ -124,10 +123,10 @@ def gen_darcy(permeability_mean, permeability_std_dev, darcy_mean, darcy_std_dev
         p = instance["permeability"].cpu().detach() #.numpy()
         d = instance["darcy"].cpu().detach()
         if i < num_train:
-            print("train", p[0,0])
+            print("train", i)
             dataloader.append({"permeability": p, "darcy": d})
         else:
-            print("test", p[0,0])
+            print("test", i)
             val_dataloader.append({"permeability": p, "darcy": d})
 
         phase_path_train = f"../plot/Phase_plot/FNO_Darcy_data{i}.png"
@@ -151,10 +150,11 @@ if __name__ == '__main__':
     permeability_std_dev = 4.49996
     darcy_mean = 0.000574634
     darcy_std_dev = 0.000388433
-    resolution = 64
+    # data
+    resolution = 128
     batch_size = 4
-    num_train = 5000
-    num_test = 4000
+    num_train = 1000
+    num_test = 800
 
     dataloader, val_dataloader = gen_darcy(permeability_mean, permeability_std_dev, darcy_mean, darcy_std_dev, resolution, batch_size, num_train, num_test)
 
