@@ -221,6 +221,8 @@ def main(logger, loss_type):
     batch_size = 4
     num_train = 1000
     num_test = 800
+    max_train = 500
+    max_test = 300
     # normalizer
     permeability_mean = 7.4836
     permeability_std_dev = 4.49996
@@ -305,7 +307,7 @@ def main(logger, loss_type):
         start_time = time.time()
         full_loss, full_test_loss = 0.0, 0.0
         idx = 0
-        for data in dataloader:
+        for i, data in zip(range(max_train), dataloader):
             # x: [64, 1, 256, 256] y: [64, 1, 256, 256]
             x = data['permeability'].to('cuda')
             y_true = data['darcy'].to('cuda')
@@ -334,26 +336,26 @@ def main(logger, loss_type):
             elapsed_time_train.append(end_time - start_time)
             
         rel_err = torch.norm(y_pred - y_true) / torch.norm(y_true)
-        print(epoch, "relative error:", rel_err)
         full_loss.backward()
         optimizer.step()
 
         if epoch % 50 == 0:
-            for test_data in val_dataloader:
+            for i, test_data in zip(range(max_test),val_dataloader):
                 y_test_true = test_data['darcy'].to('cuda')
                 x_test = test_data['permeability'].to('cuda')
                 y_test_pred = model(x_test)
-                test_loss = criterion(y_test_pred, y_test_true)
+                test_loss = criterion(y_test_pred, y_test_true) / torch.norm(y_test_true, p=2)
                 full_test_loss += test_loss
         
-        print("epoch: ", epoch, "loss: ", full_loss.item(), "test loss: ", full_test_loss.item())
+            print("epoch: ", epoch, "loss: ", full_loss, "test loss: ", full_test_loss, "relative error: ", rel_err)
+            logger.info("%s: %s %s %s", str(epoch), str(full_loss/max_train), str(full_test_loss/max_test), str(rel_err))
+            # should I divide full_loss and full_test_loss?
 
         if full_loss < threshold:
             print("Stopping early as the loss is below the threshold.")
             break
 
     print("Finished Computing")
-    model_size = model_size(model)
     # Save the model
     torch.save(model.state_dict(), f"../test_result/best_model_FNO_{loss_type}.pth")
 
@@ -377,7 +379,6 @@ def main(logger, loss_type):
     plot_solution_darcy(dataloader, phase_path_train, darcy_mean, darcy_std_dev)
 
 
-    logger.info("%s: %s", "Model Size", str(model_size))
     logger.info("%s: %s", "Loss Type", str(loss_type))
     logger.info("%s: %s", "Batch Size", str(batch_size))
     logger.info("%s: %s", "Training Loss", str(full_loss))

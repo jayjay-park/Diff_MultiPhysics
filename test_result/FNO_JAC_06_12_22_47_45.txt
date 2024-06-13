@@ -1,0 +1,3 @@
+0: tensor(1.0774, device='cuda:0', grad_fn=<DivBackward0>) tensor(1.0825, device='cuda:0', grad_fn=<DivBackward0>) tensor(0.9996, device='cuda:0', grad_fn=<DivBackward0>)
+50: tensor(0.0834, device='cuda:0', grad_fn=<DivBackward0>) tensor(0.1020, device='cuda:0', grad_fn=<DivBackward0>) tensor(0.2692, device='cuda:0', grad_fn=<DivBackward0>)
+100: tensor(0.0131, device='cuda:0', grad_fn=<DivBackward0>) tensor(0.0126, device='cuda:0', grad_fn=<DivBackward0>) tensor(0.0978, device='cuda:0', grad_fn=<DivBackward0>)
