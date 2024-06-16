@@ -212,6 +212,7 @@ def plot_solution_darcy(test_loaders, path,
     return
 
 
+
 def main(logger, loss_type):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print("Device: ", device)
@@ -281,9 +282,9 @@ def main(logger, loss_type):
     time_step = 0.01
     jac_diff_train, jac_diff_test = torch.empty(n_store+1), torch.empty(n_store+1)
 
-    t = torch.linspace(0, time_step, 2).cuda()
+    # t = torch.linspace(0, time_step, 2).cuda()
     threshold = 0.
-    f = lambda x: torchdiffeq.odeint(lorenz, x, t, method="rk4")[1]
+    # f = lambda x: torchdiffeq.odeint(lorenz, x, t, method="rk4")[1]
     torch.cuda.empty_cache()
     timer = Timer()
     elapsed_time_train = []
@@ -348,8 +349,8 @@ def main(logger, loss_type):
                 full_test_loss += test_loss
         
             print("epoch: ", epoch, "loss: ", full_loss, "test loss: ", full_test_loss, "relative error: ", rel_err)
-            logger.info("%s: %s %s %s", str(epoch), str(full_loss/max_train), str(full_test_loss/max_test), str(rel_err))
-            # should I divide full_loss and full_test_loss?
+            logger.info("%s: %s %s %s", str(epoch), str(full_loss.item()/max_train), str(full_test_loss.item()/max_test), str(rel_err.item()))
+
 
         if full_loss < threshold:
             print("Stopping early as the loss is below the threshold.")
@@ -386,7 +387,7 @@ def main(logger, loss_type):
 if __name__ == "__main__":
 
     start_time = datetime.datetime.now().strftime("%m_%d_%H_%M_%S")
-    out_file = os.path.join("../test_result/", f"FNO_JAC_{start_time}.txt")
+    out_file = os.path.join("../test_result/", f"FNO_Darcy_{start_time}.txt")
     logging.basicConfig(filename=out_file, level=logging.INFO, format="%(message)s")
     logger = logging.getLogger()
 

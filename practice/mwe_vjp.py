@@ -17,16 +17,14 @@ def linear(weight, bias, x):
     return F.linear(x, weight, bias)
 
 # 2. Dummy data
-D = 2
+D = 5
 weight = torch.randn(D, D, requires_grad=True)
 bias = torch.randn(1, D, requires_grad=True)
 x = torch.randn(1, D)
-cotangents = torch.ones(1, D)
 cotangent_gradient = torch.tensor(1.)
 print("weight: ", weight, weight.shape)
 print("input: ", x, x.shape, "\n")
 print("bias: ", bias, bias.shape, "\n")
-print("cotangents", cotangents.shape)
 
 
 '''

@@ -99,11 +99,21 @@ def plot_field(field, title, ax):
     ax.set_title(title)
     ax.axis('off')
 
+def Fisher_Info_Matrix(param, output, delta):
+    # param: parameters for Darcy PDE, in this case, (shape: batch_size x num_channel x height x width)
+    params_1 = 2
+    params_2 = 1
+
+    # for i in range(param)
+    return
+
+
 def gen_darcy(permeability_mean, permeability_std_dev, darcy_mean, darcy_std_dev, resolution, batch_size, num_train, num_test):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print("Device: ", device)
     print("Creating Dataset")
+    plot = False
 
     normaliser = {
         "permeability": (permeability_mean, permeability_std_dev),
@@ -112,7 +122,8 @@ def gen_darcy(permeability_mean, permeability_std_dev, darcy_mean, darcy_std_dev
     darcy_dataloader = Darcy2D(
         resolution=resolution,
         batch_size=batch_size,
-        normaliser=normaliser,
+        normaliser=None
+        # normaliser=normaliser,
     )
 
     dataloader = []
@@ -129,15 +140,16 @@ def gen_darcy(permeability_mean, permeability_std_dev, darcy_mean, darcy_std_dev
             print("test", i)
             val_dataloader.append({"permeability": p, "darcy": d})
 
-        phase_path_train = f"../plot/Phase_plot/FNO_Darcy_data{i}.png"
-        # take the first instance for simplicity
-        true_instance = p[0, 0].cpu().numpy()
-        pred_instance = d[0, 0].cpu().numpy()
-        # Plotting the fields
-        fig, axs = subplots(1, 2, figsize=(12, 6))
-        plot_field(true_instance, 'Permeability', axs[0])
-        plot_field(pred_instance, 'Pressure Field', axs[1])
-        fig.savefig(phase_path_train, format='png', dpi=400, bbox_inches='tight', pad_inches=0.1)
+        if plot == True:
+            phase_path_train = f"../plot/Phase_plot/FNO_Darcy_data{i}.png"
+            # take the first instance for simplicity
+            true_instance = p[0, 0].cpu().numpy()
+            pred_instance = d[0, 0].cpu().numpy()
+            # Plotting the fields
+            fig, axs = subplots(1, 2, figsize=(12, 6))
+            plot_field(true_instance, 'Permeability', axs[0])
+            plot_field(pred_instance, 'Pressure Field', axs[1])
+            fig.savefig(phase_path_train, format='png', dpi=400, bbox_inches='tight', pad_inches=0.1)
 
     print("Mini-batch: ", len(dataloader))
     return dataloader, val_dataloader
@@ -153,8 +165,9 @@ if __name__ == '__main__':
     # data
     resolution = 128
     batch_size = 4
-    num_train = 1000
-    num_test = 800
+    num_train = 10
+    num_test = 8
+
 
     dataloader, val_dataloader = gen_darcy(permeability_mean, permeability_std_dev, darcy_mean, darcy_std_dev, resolution, batch_size, num_train, num_test)
 
