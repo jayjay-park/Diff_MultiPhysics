@@ -293,13 +293,13 @@ def plot_KS(u_list, dx, n, c, eta, gamma, T, dt, train, test, ground_truth,loss_
         if ground_truth:
             fig.savefig('../plot/Phase_plot/KS/true_test_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
         else:
-            fig.savefig('../plot/Phase_plot/KS/pred_train_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
+            fig.savefig('../plot/Phase_plot/KS/pred_test_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
     elif not train and not test:
         print("all!")
         if ground_truth:
-            fig.savefig('../plot/Phase_plot/KS/KS_all_true.png')
+            fig.savefig('../plot/Phase_plot/KS/KS_all_'+str(loss_type)+'_true.png')
         else:
-            fig.savefig('../plot/Phase_plot/KS/KS_all_pred.png')
+            fig.savefig('../plot/Phase_plot/KS/KS_all_'+str(loss_type)+'_pred.png')
     else:
         fig.savefig('../plot/KS/KS_' + str(loss_type) + '{0:.1f}.png'.format(c))
     return

@@ -12,7 +12,7 @@ import sys
 import os
 import csv
 import math
-from torch.func import vmap, vjp
+from torch.func import vmap, vjp, jacrev
 from matplotlib.pyplot import *
 from mpl_toolkits.mplot3d import axes3d
 import torch.distributions as dist
@@ -89,82 +89,6 @@ def reg_jacobian_loss(time_step, True_J, cur_model_J, output_loss, reg_param):
 
     return total_loss
 
-def FIM_prev(params, setting, init, delta = 0.001):
-    # Calculate the FIM.
-    # Approximate just using Finite Difference for 1D PDE system
-    # TODO: implement Log-likelihood of parameter
-
-    ###########################
-    #Input:
-    # times time points when the true data is collected
-    # params: parameter of perturbed KS system, c
-    # data true data to be fit
-    # delta fit parameter for FIM; preset to 0.001, but can be set by user
-    #
-    #Output:
-    # simulated reported data
-    ###########################
-    #params = np.array(params)
-    listX = []
-    dx, dt, c, n, T = setting
-    params = torch.tensor(params)
-    params_1 = params.clone().detach()
-    params_2 = params.clone().detach()
-    # for each parameter
-    # for i in range(params.shape[0]+1):
-
-    params_1 = params * (1+delta)
-    params_2 = params * (1-delta)
-    # (u, c, dx, dt, T, eta, gamma, mean, device
-    res_1 = run_KS(init, params_1, dx, dt, 10,eta, gamma, False, device)[-1][1:-1] #
-    res_2 = run_KS(init, params_2, dx, dt, 10, eta, gamma, False, device)[-1][1:-1]
-    subX = (res_1 - res_2) / (2 * delta * params)
-    subX = subX.view(-1, 1)
-    print("subX", subX.shape)
-    # listX.append(subX.tolist())
-    # X = torch.tensor(listX)
-    FIM = torch.mm(subX, subX.T)
-    return FIM
-
-def FIM_suc(params, setting, init, delta = 0.001):
-    # Calculate the FIM.
-    # Approximate just using Finite Difference for 1D PDE system
-    # TODO: implement Log-likelihood of parameter
-
-    ###########################
-    #Input:
-    # times time points when the true data is collected
-    # params: parameter of perturbed KS system, c
-    # data true data to be fit
-    # delta fit parameter for FIM; preset to 0.001, but can be set by user
-    #
-    #Output:
-    # simulated reported data
-    ###########################
-    #params = np.array(params)
-    listX = []
-    dx, dt, c, n, T = setting
-    params = init
-    params_1 = params.clone().detach()
-    params_2 = params.clone().detach()
-    # for each parameter
-    print(params.shape)
-    cur_J = F.jacobian(lambda x: run_KS(x, c, dx, dt, dt*2, eta, gamma, False, device), params[1:-1].requires_grad_(True), vectorize=True)[-1]
-
-    # nll = -sum(np.log(norm.pdf(data,y,0.1*np.mean(data))))
-    # for i in range(params.shape[0]):
-
-    # params_1 = params * (1+delta)
-    # params_2 = params * (1-delta)
-    # res_1 = run_KS(params_1.to('cuda'), c, dx, dt, 50, False, device)[-1][1:-1]
-    # res_2 = run_KS(params_2.to('cuda'), c, dx, dt, 50, False, device)[-1][1:-1]
-    # print(res_1.shape, res_2.shape, params.shape)
-    # subX = (res_1 - res_2) / (2 * delta * params[1:-1])
-    # subX = subX.view(-1, 1)
-    # print("subX", subX.shape)
-
-    FIM = torch.mm(cur_J, cur_J.T)
-    return FIM
 
 def FIM(params, setting, init, delta = 0.001):
 
@@ -198,6 +122,23 @@ def FIM(params, setting, init, delta = 0.001):
     print(partial_vec.shape)
     partial_vec = partial_vec.view(-1, 1)
     FIM = torch.mm(partial_vec, partial_vec.T)
+    return FIM
+
+def FIM_noise(params, setting, init, eta, gamma, delta = 0.001):
+
+    listX = []
+    dx, dt, c, n, T = setting
+
+    gaussian_noise = np.random.normal(0., 1.0, (init.shape[0]))
+    init_noise = init + torch.tensor(gaussian_noise).to('cuda')
+    true_C = run_KS(init[1:-1], c, dx, dt, dt*2, eta, gamma, False, device)[-1]
+    print("true", true_C, true_C.shape)
+    simulated_C = run_KS(init_noise[1:-1], c, dx, dt, dt*2, eta, gamma, False, device)[-1]
+    log_likelihood = lambda simulated: 0.5*torch.norm(simulated - true_C)**2
+    jacobian = jacrev(log_likelihood, argnums=0)(simulated_C) # 127
+    jacobian = jacobian.reshape(-1, 1)
+    FIM = torch.mm(jacobian, jacobian.T) 
+
     return FIM
 
 ### Compute Metric ###
@@ -422,7 +363,7 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
     learned_traj = np.array(test_pred).reshape(num_train+num_test, dim)
 
     plot_KS(true_traj, dx, n, c, 0, 0, (num_train+num_test)*dt, dt, False, False, True, loss_type)
-    plot_KS(learned_traj, dx, n, c, 0, 0, (num_train+num_test)*dt, dt, False, True, False, loss_type)
+    plot_KS(learned_traj, dx, n, c, 0, 0, (num_train+num_test)*dt, dt, False, False, False, loss_type)
 
     print("Create loss plot")
     jac_diff = np.asarray(jac_diff)
@@ -500,10 +441,10 @@ if __name__ == "__main__":
     parser.add_argument("--time_step", type=float, default=0.25) #0.25
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=500)
+    parser.add_argument("--num_epoch", type=int, default=200)
     # parser.add_argument("--integration_time", type=int, default=0) #100
-    parser.add_argument("--num_train", type=int, default=400) #3000
-    parser.add_argument("--num_test", type=int, default=400)#3000
+    # parser.add_argument("--num_train", type=int, default=400) #3000
+    # parser.add_argument("--num_test", type=int, default=400)#3000
     parser.add_argument("--num_trans", type=int, default=0) #10000
     parser.add_argument("--iters", type=int, default=6000)
     parser.add_argument("--threshold", type=float, default=0.)
@@ -512,7 +453,7 @@ if __name__ == "__main__":
     parser.add_argument("--reg_param", type=float, default=0.9) #1e-6
     parser.add_argument("--c", type=float, default=0.)
     parser.add_argument("--dim", type=int, default=127, choices = [127, 200, 1024]) 
-    parser.add_argument("--T", type=int, default=101, choices = [5, 11, 51, 101, 201, 1001, 1501])
+    parser.add_argument("--T", type=int, default=301, choices = [5, 11, 51, 101, 201, 301, 501, 1001, 1501])
     parser.add_argument("--optim_name", default="AdamW", choices=["AdamW", "Adam", "RMSprop", "SGD"])
     parser.add_argument("--cotangent", default="FIM", choices=["ones", "rand", "QR", "FIM", "score"])
     parser.add_argument("--dyn_sys", default="KS", choices=DYNSYS_MAP.keys())
@@ -551,7 +492,7 @@ if __name__ == "__main__":
     # Generate Training/Test/Multi-Step Prediction Data
     torch.cuda.empty_cache()
     num_samples_train = 3
-    num_samples_test = 2
+    num_samples_test = 3
     length_traj = int((T-1) * int(1/dt))
     u_list_all = []
     # create pairs of eta and gamma
@@ -609,7 +550,8 @@ if __name__ == "__main__":
     elif args.cotangent == "rand":
         cotangent = torch.rand(dim).to('cuda')
     elif args.cotangent == "FIM":
-        covariance_mat = FIM(args.c, dyn_setting, u0, delta = 0.001)
+        # params, setting, init, eta, gamma, delta = 0.001
+        covariance_mat = FIM_noise(args.c, dyn_setting, u0, eta_samples[0], gamma_samples[0], delta = 0.001)
         eigval, eigvecs = torch.linalg.eig(covariance_mat)
         print(eigvecs.shape)
         cotangent = eigvecs[:, 0].float().to('cuda') # choose the first eigenvector (each column is eigen vector)
