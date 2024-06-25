@@ -202,8 +202,9 @@ from mpl_toolkits.mplot3d import Axes3D
 #     # return u_list
 #     return u_list, time_avg
 
+#########################################################################
 
-def rhs_KS_implicit(u, dx, device):
+def rhs_KS_implicit(u, dx, alpha, beta, device):
     n = u.shape[0]  # u contains boundary nodes i = 0, 1, 2, ... , n, n+1
 
     # ----- second derivative ----- #
@@ -228,7 +229,7 @@ def rhs_KS_implicit(u, dx, device):
     C[-2, -3] = -4 / dx4
     C[-2, -4] = 1 / dx4
 
-    return -(A + C)
+    return -(A*alpha + C*beta)
 
 def rhs_KS_explicit_nl(u, c, dx, device):
     n = u.shape[0]
@@ -255,16 +256,16 @@ def explicit_rk(u, c, dx, dt, device):
     k4 = rhs_KS_explicit_nl(u + dt*(0.75*k2 + 0.25*k3), c, dx, device) + rhs_KS_explicit_linear(u + dt*(0.75*k2 + 0.25*k3), c, dx, device)
     return dt*(3/4*k2 - 1/4*k3 + 1/2*k4)
 
-def implicit_rk(u, c, dx, dt, device):
+def implicit_rk(u, c, dx, dt, alpha, beta, device):
     n = u.shape[0]
-    A = rhs_KS_implicit(u, dx, device)
+    A = rhs_KS_implicit(u, dx, alpha, beta, device)
     Au = torch.matmul(A, u)
     k2 = torch.linalg.solve(torch.eye(n, device=device, dtype=torch.double) - dt/3*A, Au)
     k3 = torch.linalg.solve(torch.eye(n, device=device, dtype=torch.double) - dt/2*A, Au + dt/2*torch.matmul(A, k2))
     k4 = torch.linalg.solve(torch.eye(n, device=device, dtype=torch.double) - dt/2*A, Au + dt/4*torch.matmul(A, 3*k2 - k3))
     return dt * (3/4*k2 - 1/4*k3 + 1/2*k4)
 
-def plot_KS(u_list, dx, n, c, T, dt, train, test, loss_type):
+def plot_KS(u_list, dx, n, c, eta, gamma, T, dt, train, test, ground_truth,loss_type):
     if torch.is_tensor(u_list):
         u_list = np.array(u_list.detach().cpu())
     else:
@@ -284,23 +285,33 @@ def plot_KS(u_list, dx, n, c, T, dt, train, test, loss_type):
     plt.tight_layout()
 
     if train:
-        fig.savefig('../plot/Phase_plot/KS/true_train_' + str(loss_type) + '{0:.1f}.png'.format(c))
+        if ground_truth:
+            fig.savefig('../plot/Phase_plot/KS/true_train_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
+        else:
+            fig.savefig('../plot/Phase_plot/KS/pred_train_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
     elif test:
-        fig.savefig('../plot/Phase_plot/KS/pred_train_' + str(loss_type) + '{0:.1f}.png'.format(c))
+        if ground_truth:
+            fig.savefig('../plot/Phase_plot/KS/true_test_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
+        else:
+            fig.savefig('../plot/Phase_plot/KS/pred_train_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
     elif not train and not test:
-        None
+        print("all!")
+        if ground_truth:
+            fig.savefig('../plot/Phase_plot/KS/KS_all_true.png')
+        else:
+            fig.savefig('../plot/Phase_plot/KS/KS_all_pred.png')
     else:
         fig.savefig('../plot/KS/KS_' + str(loss_type) + '{0:.1f}.png'.format(c))
     return
 
-def run_KS(u, c, dx, dt, T, mean, device):
+def run_KS(u, c, dx, dt, T, alpha, beta, mean, device):
     n = u.shape[0]
     t = 0.
     u_list = []
     while t < T:
         if t % 10 == 0:
             print("run_KS", t)
-        u = u + explicit_rk(u, c, dx, dt, device) + implicit_rk(u, c, dx, dt, device)
+        u = u + explicit_rk(u, c, dx, dt, device) + implicit_rk(u, c, dx, dt, alpha, beta, device)
         u[0], u[-1] = 0., 0.
         u_list.append(u.clone())
         t += dt
@@ -308,14 +319,14 @@ def run_KS(u, c, dx, dt, T, mean, device):
     u_list = torch.stack(u_list) if torch.is_tensor(u) else torch.stack([torch.tensor(np.array(ui)) for ui in u_list])
     return u_list
 
-def run_KS_timeavg(u, c, dx, dt, T, mean):
+def run_KS_timeavg(u, c, dx, dt, T, alpha, beta, mean):
     n = u.shape[0]
     t = 0.
     spatial_avg = 0
     denominator = 0
     u_list = []
     while t < T:
-        u = u + explicit_rk(u, c, dx, dt) + implicit_rk(u, c, dx, dt)
+        u = u + explicit_rk(u, c, dx, dt) + implicit_rk(u, c, dx, dt, alpha, beta)
         u[0], u[-1] = 0., 0.
         u_list.append(u)
         t += dt
@@ -331,3 +342,138 @@ def run_KS_timeavg(u, c, dx, dt, T, mean):
 
     u_list = torch.stack(u_list) if torch.is_tensor(u) else torch.stack([torch.tensor(np.array(ui)) for ui in u_list])
     return u_list, time_avg
+
+
+####################################
+
+# import torch
+# import torch.sparse as tosp
+
+# def rhs_KS_implicit(u, dx, device):
+#     n = u.shape[0]  # u contains boundary nodes i = 0, 1, 2, ... , n, n+1
+
+#     # ----- second derivative ----- #
+#     A = tosp.diags([1, -2, 1], [-1, 0, 1], (n, n), device=device)
+#     A = A.to_dense().double() / (dx * dx)
+#     A[0], A[-1], A[:, 0], A[:, -1] = 0, 0, 0, 0
+
+#     # ----- fourth derivative ----- #
+#     dx4 = dx * dx * dx * dx
+#     B = tosp.diags([1, -4, 6, -4, 1], [-2, -1, 0, 1, 2], (n-2, n-2), device=device)
+#     B = B.to_dense().double() / dx4
+
+#     # Create the pad
+#     C = torch.zeros((n, n), device=device).double()
+#     C[1:n-1, 1:n-1] = B
+
+#     # Boundary Condition (i = 2, 3, ... , n-1)
+#     C[1, 1] = 7 / dx4
+#     C[1, 2] = -4 / dx4
+#     C[1, 3] = 1 / dx4
+#     C[-2, -2] = 7 / dx4
+#     C[-2, -3] = -4 / dx4
+#     C[-2, -4] = 1 / dx4
+
+#     return -(A + C)
+
+# def rhs_KS_explicit_nl(u, c, dx, device):
+#     n = u.shape[0]
+#     B = tosp.diags([1, -1], [1, -1], (n, n), device=device)
+#     B = B.to_dense().double() / (2 * dx)
+#     B[0], B[-1] = 0., 0.  # du_0/dx = 0, du_n/dx = 0
+    
+#     exp_term = -torch.matmul(B, u * u) / 2
+#     return exp_term
+
+# def rhs_KS_explicit_linear(u, c, dx, device):
+#     n = u.shape[0]
+#     B = tosp.diags([1, -1], [1, -1], (n, n), device=device)
+#     B = B.to_dense().double() / (2 * dx)
+#     B[0], B[-1] = 0., 0.  # du_0/dx = 0, du_n/dx = 0
+
+#     exp_term = -torch.matmul(B, u) * c
+#     return exp_term
+
+# def explicit_rk(u, c, dx, dt, device):
+#     k1 = rhs_KS_explicit_nl(u, c, dx, device) + rhs_KS_explicit_linear(u, c, dx, device)
+#     k2 = rhs_KS_explicit_nl(u + dt/3*k1, c, dx, device) + rhs_KS_explicit_linear(u + dt/3*k1, c, dx, device)
+#     k3 = rhs_KS_explicit_nl(u + dt*k2, c, dx, device) + rhs_KS_explicit_linear(u + dt*k2, c, dx, device)
+#     k4 = rhs_KS_explicit_nl(u + dt*(0.75*k2 + 0.25*k3), c, dx, device) + rhs_KS_explicit_linear(u + dt*(0.75*k2 + 0.25*k3), c, dx, device)
+#     return dt*(3/4*k2 - 1/4*k3 + 1/2*k4)
+
+# def implicit_rk(u, c, dx, dt, device):
+#     n = u.shape[0]
+#     A = rhs_KS_implicit(u, dx, device)
+#     Au = torch.matmul(A, u)
+#     k2 = torch.linalg.solve(torch.eye(n, device=device, dtype=torch.double) - dt/3*A, Au)
+#     k3 = torch.linalg.solve(torch.eye(n, device=device, dtype=torch.double) - dt/2*A, Au + dt/2*torch.matmul(A, k2))
+#     k4 = torch.linalg.solve(torch.eye(n, device=device, dtype=torch.double) - dt/2*A, Au + dt/4*torch.matmul(A, 3*k2 - k3))
+#     return dt * (3/4*k2 - 1/4*k3 + 1/2*k4)
+
+# def plot_KS(u_list, dx, n, c, T, dt, train, test, loss_type):
+#     if torch.is_tensor(u_list):
+#         u_list = np.array(u_list.detach().cpu())
+#     else:
+#         u_list = np.array(u_list)
+#     fig, ax = plt.subplots(figsize=(12, 15))
+#     x = np.arange(0, n, dx)
+#     t = np.arange(0, T, dt)
+#     xx, tt = np.meshgrid(x, t)
+#     levels = np.arange(-4, 4, 0.01)
+#     cs = ax.contourf(xx, tt, u_list, cmap=cm.jet)
+#     cbar = fig.colorbar(cs)
+#     cbar.ax.tick_params(labelsize=34)
+#     ax.set_xlabel("X", fontsize=35)
+#     ax.set_ylabel("T", fontsize=35)
+#     ax.xaxis.set_tick_params(labelsize=34)
+#     ax.yaxis.set_tick_params(labelsize=34)
+#     plt.tight_layout()
+
+#     if train:
+#         fig.savefig('../plot/Phase_plot/KS/true_train_' + str(loss_type) + '{0:.1f}.png'.format(c))
+#     elif test:
+#         fig.savefig('../plot/Phase_plot/KS/pred_train_' + str(loss_type) + '{0:.1f}.png'.format(c))
+#     elif not train and not test:
+#         None
+#     else:
+#         fig.savefig('../plot/KS/KS_' + str(loss_type) + '{0:.1f}.png'.format(c))
+#     return
+
+# def run_KS(u, c, dx, dt, T, mean, device):
+#     n = u.shape[0]
+#     t = 0.
+#     u_list = []
+#     while t < T:
+#         if t % 10 == 0:
+#             print("run_KS", t)
+#         u = u + explicit_rk(u, c, dx, dt, device) + implicit_rk(u, c, dx, dt, device)
+#         u[0], u[-1] = 0., 0.
+#         u_list.append(u.clone())
+#         t += dt
+
+#     u_list = torch.stack(u_list) if torch.is_tensor(u) else torch.stack([torch.tensor(np.array(ui)) for ui in u_list])
+#     return u_list
+
+# def run_KS_timeavg(u, c, dx, dt, T, mean):
+#     n = u.shape[0]
+#     t = 0.
+#     spatial_avg = 0
+#     denominator = 0
+#     u_list = []
+#     while t < T:
+#         u = u + explicit_rk(u, c, dx, dt) + implicit_rk(u, c, dx, dt)
+#         u[0], u[-1] = 0., 0.
+#         u_list.append(u)
+#         t += dt
+
+#         if mean and t >= (T - 200 + dt):
+#             denominator += 1
+#             spatial_avg += torch.mean(u)
+
+#     if mean:
+#         time_avg = spatial_avg / denominator
+#     else:
+#         time_avg = None
+
+#     u_list = torch.stack(u_list) if torch.is_tensor(u) else torch.stack([torch.tensor(np.array(ui)) for ui in u_list])
+#     return u_list, time_avg

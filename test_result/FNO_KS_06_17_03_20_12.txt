@@ -1,0 +1,41 @@
+time_step: 0.25
+lr: 0.001
+weight_decay: 0.0005
+num_epoch: 500
+num_train: 1000
+num_test: 3000
+num_trans: 0
+iters: 6000
+threshold: 0.0
+batch_size: 10
+loss_type: JAC
+reg_param: 0.9
+c: 0.8
+dim: 127
+T: 1001
+optim_name: AdamW
+cotangent: FIM
+dyn_sys: KS
+Model Size: 10.300296783447266
+Loss Type: JAC
+Cotangent: tensor([[[1., 1., 1.,  ..., 1., 1., 1.]],
+
+        [[1., 1., 1.,  ..., 1., 1., 1.]],
+
+        [[1., 1., 1.,  ..., 1., 1., 1.]],
+
+        ...,
+
+        [[1., 1., 1.,  ..., 1., 1., 1.]],
+
+        [[1., 1., 1.,  ..., 1., 1., 1.]],
+
+        [[1., 1., 1.,  ..., 1., 1., 1.]]], device='cuda:0')
+Batch Size: 10
+Training Loss: tensor(0.0054, device='cuda:0', grad_fn=<AddBackward0>)
+Test Loss: tensor(0.4589, device='cuda:0', grad_fn=<AddBackward0>)
+Relative Error: tensor(1.4867, device='cuda:0', grad_fn=<DivBackward0>)
+Mean Diff: tensor(5.7231)
+Var Diff: tensor(3.0112)
+MSE diff: 0.4348563050152734
+JAC diff: 0.0007580982846775441

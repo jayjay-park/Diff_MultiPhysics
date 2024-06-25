@@ -1,0 +1,27 @@
+time_step: 0.25
+lr: 0.001
+weight_decay: 0.0005
+num_epoch: 100
+integration_time: 0
+num_train: 1000
+num_test: 3000
+num_trans: 0
+iters: 6000
+threshold: 0.0
+batch_size: 20
+loss_type: MSE
+reg_param: 0.4
+c: 0.8
+dim: 200
+T: 1001
+optim_name: AdamW
+dyn_sys: KS
+Model Size: 10.300296783447266
+Loss Type: MSE
+Batch Size: 20
+Training Loss: tensor(0.0002, device='cuda:0', grad_fn=<AddBackward0>)
+Test Loss: tensor(0.0086, device='cuda:0', grad_fn=<AddBackward0>)
+Relative Error: tensor(2.8065, device='cuda:0', grad_fn=<DivBackward0>)
+Mean Diff: tensor(0.2141)
+Var Diff: tensor(0.3857)
+MSE diff: 0.012414498675298091

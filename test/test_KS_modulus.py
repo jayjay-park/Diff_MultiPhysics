@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.autograd.functional as F
+# import torch.autograd.functional as F
 import torch.optim as optim
 import torchdiffeq
 import datetime
@@ -15,6 +15,7 @@ import math
 from torch.func import vmap, vjp
 from matplotlib.pyplot import *
 from mpl_toolkits.mplot3d import axes3d
+import torch.distributions as dist
 
 # mpirun -n 2 python test_....
 
@@ -41,42 +42,42 @@ class Timer:
         self.elapsed_times.append(self.elapsed_time)
         return False
 
-def create_data(traj, n_train, n_test, n_nodes, n_trans):
-    ''' func: call simulate to create graph and train, test dataset
-        args: ti, tf, init_state = param for simulate()
-              n_train = num of training instance
-              n_test = num of test instance
-              n_nodes = num of nodes in graph
-              n_trans = num of transition phase '''
+# def create_data(traj, n_train, n_test, n_nodes, n_trans):
+#     ''' func: call simulate to create graph and train, test dataset
+#         args: ti, tf, init_state = param for simulate()
+#               n_train = num of training instance
+#               n_test = num of test instance
+#               n_nodes = num of nodes in graph
+#               n_trans = num of transition phase '''
 
-    ##### create training dataset #####
-    X = np.zeros((n_train, n_nodes))
-    Y = np.zeros((n_train, n_nodes))
+#     ##### create training dataset #####
+#     X = np.zeros((n_train, n_nodes))
+#     Y = np.zeros((n_train, n_nodes))
 
-    if torch.is_tensor(traj):
-        traj = traj.detach().cpu().numpy()
-    for i in torch.arange(0, n_train, 1):
-        i = int(i)
-        X[i] = traj[n_trans+i]
-        Y[i] = traj[n_trans+1+i]
-        # print("X", X[i])
+#     if torch.is_tensor(traj):
+#         traj = traj.detach().cpu().numpy()
+#     for i in torch.arange(0, n_train, 1):
+#         i = int(i)
+#         X[i] = traj[n_trans+i]
+#         Y[i] = traj[n_trans+1+i]
+#         # print("X", X[i])
 
-    X = torch.tensor(X).reshape(n_train,n_nodes)
-    Y = torch.tensor(Y).reshape(n_train,n_nodes)
+#     X = torch.tensor(X).reshape(n_train,n_nodes)
+#     Y = torch.tensor(Y).reshape(n_train,n_nodes)
 
-    ##### create test dataset #####
-    X_test = np.zeros((n_test, n_nodes))
-    Y_test = np.zeros((n_test, n_nodes))
+#     ##### create test dataset #####
+#     X_test = np.zeros((n_test, n_nodes))
+#     Y_test = np.zeros((n_test, n_nodes))
 
-    for i in torch.arange(0, n_test, 1):
-        i = int(i)
-        X_test[i] = traj[n_trans+n_train+i]
-        Y_test[i] = traj[n_trans+1+n_train+i]
+#     for i in torch.arange(0, n_test, 1):
+#         i = int(i)
+#         X_test[i] = traj[n_trans+n_train+i]
+#         Y_test[i] = traj[n_trans+1+n_train+i]
 
-    X_test = torch.tensor(X_test).reshape(n_test, n_nodes)
-    Y_test = torch.tensor(Y_test).reshape(n_test, n_nodes)
+#     X_test = torch.tensor(X_test).reshape(n_test, n_nodes)
+#     Y_test = torch.tensor(Y_test).reshape(n_test, n_nodes)
 
-    return [X, Y, X_test, Y_test]
+#     return [X, Y, X_test, Y_test]
 
 def reg_jacobian_loss(time_step, True_J, cur_model_J, output_loss, reg_param):
     #reg_param: 1e-5 #5e-4 was working well #0.11
@@ -87,6 +88,117 @@ def reg_jacobian_loss(time_step, True_J, cur_model_J, output_loss, reg_param):
     total_loss = reg_param * norm_diff_jac + (1/time_step/time_step)*output_loss
 
     return total_loss
+
+def FIM_prev(params, setting, init, delta = 0.001):
+    # Calculate the FIM.
+    # Approximate just using Finite Difference for 1D PDE system
+    # TODO: implement Log-likelihood of parameter
+
+    ###########################
+    #Input:
+    # times time points when the true data is collected
+    # params: parameter of perturbed KS system, c
+    # data true data to be fit
+    # delta fit parameter for FIM; preset to 0.001, but can be set by user
+    #
+    #Output:
+    # simulated reported data
+    ###########################
+    #params = np.array(params)
+    listX = []
+    dx, dt, c, n, T = setting
+    params = torch.tensor(params)
+    params_1 = params.clone().detach()
+    params_2 = params.clone().detach()
+    # for each parameter
+    # for i in range(params.shape[0]+1):
+
+    params_1 = params * (1+delta)
+    params_2 = params * (1-delta)
+    # (u, c, dx, dt, T, eta, gamma, mean, device
+    res_1 = run_KS(init, params_1, dx, dt, 10,eta, gamma, False, device)[-1][1:-1] #
+    res_2 = run_KS(init, params_2, dx, dt, 10, eta, gamma, False, device)[-1][1:-1]
+    subX = (res_1 - res_2) / (2 * delta * params)
+    subX = subX.view(-1, 1)
+    print("subX", subX.shape)
+    # listX.append(subX.tolist())
+    # X = torch.tensor(listX)
+    FIM = torch.mm(subX, subX.T)
+    return FIM
+
+def FIM_suc(params, setting, init, delta = 0.001):
+    # Calculate the FIM.
+    # Approximate just using Finite Difference for 1D PDE system
+    # TODO: implement Log-likelihood of parameter
+
+    ###########################
+    #Input:
+    # times time points when the true data is collected
+    # params: parameter of perturbed KS system, c
+    # data true data to be fit
+    # delta fit parameter for FIM; preset to 0.001, but can be set by user
+    #
+    #Output:
+    # simulated reported data
+    ###########################
+    #params = np.array(params)
+    listX = []
+    dx, dt, c, n, T = setting
+    params = init
+    params_1 = params.clone().detach()
+    params_2 = params.clone().detach()
+    # for each parameter
+    print(params.shape)
+    cur_J = F.jacobian(lambda x: run_KS(x, c, dx, dt, dt*2, eta, gamma, False, device), params[1:-1].requires_grad_(True), vectorize=True)[-1]
+
+    # nll = -sum(np.log(norm.pdf(data,y,0.1*np.mean(data))))
+    # for i in range(params.shape[0]):
+
+    # params_1 = params * (1+delta)
+    # params_2 = params * (1-delta)
+    # res_1 = run_KS(params_1.to('cuda'), c, dx, dt, 50, False, device)[-1][1:-1]
+    # res_2 = run_KS(params_2.to('cuda'), c, dx, dt, 50, False, device)[-1][1:-1]
+    # print(res_1.shape, res_2.shape, params.shape)
+    # subX = (res_1 - res_2) / (2 * delta * params[1:-1])
+    # subX = subX.view(-1, 1)
+    # print("subX", subX.shape)
+
+    FIM = torch.mm(cur_J, cur_J.T)
+    return FIM
+
+def FIM(params, setting, init, delta = 0.001):
+
+    listX = []
+    dx, dt, c, n, T = setting
+    params = init[1:-1]
+    init_copy1 = init[1:-1].clone().detach()
+    init_copy2 = init[1:-1].clone().detach()
+    params_1 = params.clone().detach()
+    params_2 = params.clone().detach()
+    print(params.shape)
+
+    for i in range(params.shape[0]):
+        init_copy1[i] =  params[i] * (1+delta)
+        init_copy2[i] = params[i] * (1-delta)
+        res_1 = run_KS(init_copy1.to('cuda'), c, dx, dt, dt*2, eta, gamma, False, device)[-1]
+        res_2 = run_KS(init_copy2.to('cuda'), c, dx, dt, dt*2, eta, gamma, False, device)[-1]
+        # compute log prob (stein..)
+        std = torch.std(params)
+        mean = torch.mean(params)
+        normal_dist = dist.Normal(mean, std)
+        log_prob_res1 = normal_dist.log_prob(res_1)[i]
+        log_prob_res2 = normal_dist.log_prob(res_2)[i]
+        print("param", params[i])
+        print("log", log_prob_res1)
+        cur = (log_prob_res1 - log_prob_res2) / (2 * delta)
+        print(cur.shape)
+        listX.append(cur)
+
+    partial_vec = torch.stack(listX)
+    print(partial_vec.shape)
+    partial_vec = partial_vec.view(-1, 1)
+    FIM = torch.mm(partial_vec, partial_vec.T)
+    return FIM
 
 ### Compute Metric ###
 def one_step_rk4(f, y0, t):
@@ -163,9 +275,11 @@ def model_size(model):
 
 def main(logger, loss_type, dataset, data_config, setting, train_config):
 
+    torch.autograd.set_detect_anomaly(True)
+
     X, Y, X_test, Y_test = dataset
     dx, dt, c, n, T = setting
-    num_train, num_test, batch_size, dim = data_config
+    num_train, num_test, batch_size, dim, eta, gamma = data_config
     print(X.shape, Y.shape, X_test.shape, Y_test.shape)
 
     train_list = [X, Y]
@@ -195,30 +309,38 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=1e-3)
 
     ### Training Loop ###
-    n_store, k, num_epochs, threshold, reg_param = train_config
+    n_store, k, num_epochs, threshold, reg_param, cotangent = train_config
     timer = Timer()
     elapsed_time_train = []
     jac_diff, mse_diff = [], []
 
     # Jacobian Computation
-    f = lambda x: run_KS(x, c, dx, dt, dt*2, False, device)[-1]
+    f = lambda x: run_KS(x, c, dx, dt, dt*2, eta, gamma, False, device)[-1]
     jac_diff_train, jac_diff_test = torch.empty(n_store+1), torch.empty(n_store+1)
     torch.cuda.empty_cache()
 
     if loss_type == "JAC":
-        print("Computing analytical Jacobian")
-        True_j = torch.zeros(num_train, dim)
-        for j in range(num_train):
-            x = train_list[0][j].requires_grad_(True).to('cuda') # torch.Size([127])
-            cotangent = torch.ones_like(x).to('cuda')
-            output, vjp_tru_func = vjp(f, x)
-            res = vjp_tru_func(cotangent)[0]
-            # print("res", res, res.shape)
-            True_j[j] = res
-        True_J = True_j.reshape(len(dataloader), dataloader.batch_size, dim).cuda()
+        # make cotangent batch for the loss
+        cotangent_copy = cotangent.clone().detach()
+        cotangent_batch_slim = []
+        for b in range(batch_size):
+            cotangent_batch_slim.append(cotangent_copy)
+        cotangent_batch_stacked = torch.stack(cotangent_batch_slim)
+        cotangent_batch = cotangent_batch_stacked.unsqueeze(dim=1)
+        print("size of cotangent batch: ", cotangent_batch.shape)
 
-        print("Sanity Check: \n", True_j[0], True_j[batch_size], True_j[2*batch_size], True_j[3*batch_size])
-        print("True: ", True_J[0:4, 0])
+        print("Computing vjp")
+        True_J = torch.zeros(len(dataloader), dataloader.batch_size, dim)
+        index = 0
+        for data in dataloader:
+            x = data[0].to('cuda').double().requires_grad_(True)
+            output, vjp_tru_func = vjp(f, x)
+            res = vjp_tru_func(cotangent_batch_stacked)[0] # shape [127]
+            True_J[index] = res.detach().cpu()
+            index += 1
+            print(index, "res", res.shape)
+        # print("Sanity Check: \n", True_j[0], True_j[batch_size], True_j[2*batch_size], True_j[3*batch_size])
+        # print("True: ", True_J[0:4, 0])
     
     print("Beginning training")
     for epoch in range(num_epochs):
@@ -241,14 +363,15 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
             if loss_type == "JAC":
                 with timer:
                     output, vjp_func = vjp(model, x)
-                    cotangent = torch.ones_like(x)
-                    vjp_out = vjp_func(cotangent)[0].squeeze()
-
-                    jac_norm_diff = criterion(True_J[idx], vjp_out)
+                    vjp_out = vjp_func(cotangent_batch)[0].squeeze() 
+                    # Is cotangent vector creation is problem? No
+                    # Does same thing happen in MSE?
+                    CurTrue_J = True_J[idx].to('cuda')
+                    jac_norm_diff = criterion(CurTrue_J, vjp_out)
                     jac += jac_norm_diff.detach().cpu().numpy()
-                    loss += (jac_norm_diff / torch.norm(True_J[idx]))*reg_param
+                    loss += (jac_norm_diff / torch.norm(CurTrue_J))*reg_param
     
-            full_loss += loss/len(dataloader)
+            full_loss += loss
             idx += 1
             end_time = time.time()  
             elapsed_time_train.append(end_time - start_time)
@@ -258,7 +381,7 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
             
         mse_diff.append(mse)
         jac_diff.append(jac)
-        full_loss.backward(retain_graph=True)
+        full_loss.backward(retain_graph=True) #retain_graph=True
         optimizer.step()
         
         for test_data in test_dataloader:
@@ -269,7 +392,7 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
             test_true.append(y_test_true.detach().cpu().numpy())
             test_pred.append(y_test_pred.squeeze().detach().cpu().numpy())
         
-        print("epoch: ", epoch, "loss: ", full_loss.item(), "test loss: ", full_test_loss.item())
+        print("epoch: ", epoch, "loss: ", full_loss.item()/len(dataloader), "test loss: ", full_test_loss.item())
 
         if full_loss < threshold:
             print("Stopping early as the loss is below the threshold.")
@@ -297,8 +420,9 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
     print("len", len(test_true), len(test_true[0]))
     true_traj = np.array(test_true).reshape(num_train+num_test, dim)
     learned_traj = np.array(test_pred).reshape(num_train+num_test, dim)
-    plot_KS(true_traj, dx, n, c, (num_train+num_test)*dt, dt, True, False, loss_type)
-    plot_KS(learned_traj, dx, n, c, (num_train+num_test)*dt, dt, False, True, loss_type)
+
+    plot_KS(true_traj, dx, n, c, 0, 0, (num_train+num_test)*dt, dt, False, False, True, loss_type)
+    plot_KS(learned_traj, dx, n, c, 0, 0, (num_train+num_test)*dt, dt, False, True, False, loss_type)
 
     print("Create loss plot")
     jac_diff = np.asarray(jac_diff)
@@ -344,8 +468,9 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
 
     logger.info("%s: %s", "Model Size", str(modelsize))
     logger.info("%s: %s", "Loss Type", str(loss_type))
+    logger.info("%s: %s", "Cotangent", str(cotangent))
     logger.info("%s: %s", "Batch Size", str(batch_size))
-    logger.info("%s: %s", "Training Loss", str(full_loss))
+    logger.info("%s: %s", "Training Loss", str(full_loss/len(dataloader)))
     logger.info("%s: %s", "Test Loss", str(full_test_loss))
     logger.info("%s: %s", "Relative Error", str(rel_err))
     # logger.info("%s: %s", "Learned LE", str(learned_LE))
@@ -364,32 +489,37 @@ if __name__ == "__main__":
     # Set device
     torch.manual_seed(42)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    # Enable cuDNN benchmark to allow PyTorch to find the best algorithms
+    torch.backends.cudnn.benchmark = True
     print("device: ", device)
-    
+
     # Set arguments (hyperparameters)
     DYNSYS_MAP = {'KS': [run_KS, 127]}
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--time_step", type=float, default=0.25)
+    parser.add_argument("--time_step", type=float, default=0.25) #0.25
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--num_epoch", type=int, default=500)
-    parser.add_argument("--integration_time", type=int, default=0) #100
-    parser.add_argument("--num_train", type=int, default=1000) #3000
-    parser.add_argument("--num_test", type=int, default=3000)#3000
+    # parser.add_argument("--integration_time", type=int, default=0) #100
+    parser.add_argument("--num_train", type=int, default=400) #3000
+    parser.add_argument("--num_test", type=int, default=400)#3000
     parser.add_argument("--num_trans", type=int, default=0) #10000
     parser.add_argument("--iters", type=int, default=6000)
     parser.add_argument("--threshold", type=float, default=0.)
-    parser.add_argument("--batch_size", type=int, default=20)
-    parser.add_argument("--loss_type", default="JAC", choices=["JAC", "MSE", "Auto_corr"])
-    parser.add_argument("--reg_param", type=float, default=0.8) #1e-6
-    parser.add_argument("--c", type=float, default=0.8) #1e-6
+    parser.add_argument("--batch_size", type=int, default=50)
+    parser.add_argument("--loss_type", default="JAC", choices=["JAC", "MSE"])
+    parser.add_argument("--reg_param", type=float, default=0.9) #1e-6
+    parser.add_argument("--c", type=float, default=0.)
+    parser.add_argument("--dim", type=int, default=127, choices = [127, 200, 1024]) 
+    parser.add_argument("--T", type=int, default=101, choices = [5, 11, 51, 101, 201, 1001, 1501])
     parser.add_argument("--optim_name", default="AdamW", choices=["AdamW", "Adam", "RMSprop", "SGD"])
+    parser.add_argument("--cotangent", default="FIM", choices=["ones", "rand", "QR", "FIM", "score"])
     parser.add_argument("--dyn_sys", default="KS", choices=DYNSYS_MAP.keys())
 
     args = parser.parse_args()
     dyn_sys_func = run_KS
-    dim = 127
+    dim = args.dim
     dyn_sys_info = [dyn_sys_func, args.dyn_sys, dim]
 
     start_time = datetime.datetime.now().strftime("%m_%d_%H_%M_%S")
@@ -400,16 +530,18 @@ if __name__ == "__main__":
         logger.info("%s: %s", arg, value)
 
     # Assign Initial Point of Orbit
-    L = 128 #128 # n = [128, 256, 512, 700]
-    n = L-1 # num of internal node
-    T = 1501 #1000 #100
+    L = args.dim+1 #128 # n = [128, 256, 512, 700]
+    n = args.dim # num of internal node
+    T = args.T#1501 #1000 #100
     c = args.c
+    eta = 1.
+    gamma = 1. # viscosity term!
 
     dx = L/(n+1)
     dt = args.time_step
     x = torch.arange(0, L+dx, dx) # [0, 0+dx, ... 128] shape: L + 1
-    u0 = 2.71828**(-(x-64)**2/512).to(device).double().requires_grad_(True) # torch.exp(-(x-64)**2/512)
-    # u_multi_0 = -0.5 + torch.rand(n+2)
+    u0 = 2.71828**(-(x-64)**2/512).to(device).double().requires_grad_(True)
+    # u0 = (6.2831853/L)*x.to(device).double().requires_grad_(True)
 
     # boundary condition
     u0[0], u0[-1] = 0, 0 
@@ -418,18 +550,71 @@ if __name__ == "__main__":
 
     # Generate Training/Test/Multi-Step Prediction Data
     torch.cuda.empty_cache()
-    u_list = run_KS(u0, c, dx, dt, T, False, device)
-    u_list = u_list[:, 1:-1] # remove the last boundary node and keep the first boundary node as it is initial condition
-    print('u0', u_list[:, 0])
-    print("u", u_list.shape)
+    num_samples_train = 3
+    num_samples_test = 2
+    length_traj = int((T-1) * int(1/dt))
+    u_list_all = []
+    # create pairs of eta and gamma
+    eta_mean = 1.
+    eta_std = 0.2
+    gamma_mean = 1.
+    gamma_std = 0.2
+    eta_samples = torch.normal(mean=eta_mean, std=eta_std, size=(num_samples_train + num_samples_test,))
+    gamma_samples = torch.normal(mean=gamma_mean, std=gamma_std, size=(num_samples_train + num_samples_test,))
+    print("eta", eta_samples)
+    print("gamma", gamma_samples)
 
-    # Data split
-    dataset = create_data(u_list, n_train=args.num_train, n_test=args.num_test, n_nodes=dim, n_trans=args.num_trans)
-    data_config = [args.num_train, args.num_test, args.batch_size, dim]
+    num_train = num_samples_train * (T-1) *int(1/dt)
+    num_test = num_samples_test * (T-1) *int(1/dt)
+    print("num of train", num_train)
+    print("num of test", num_test)
+
+    X = torch.zeros(num_train, dim)
+    Y = torch.zeros(num_train, dim)
+    X_test = torch.zeros(num_test, dim)
+    Y_test = torch.zeros(num_test, dim)
+
+    for s in range(num_samples_train):
+        print("s", s)
+        u_list = run_KS(u0, c, dx, dt, T+1, eta_samples[s], gamma_samples[s], False, device)
+        u_short = u_list[:, 1:-1].detach().cpu() # remove the last boundary node and keep the first boundary node as it is initial condition
+        print("list length", length_traj)
+        plot_KS(u_short, dx, n, c, eta_samples[s], gamma_samples[s], u_short.shape[0]*dt, dt, True, False, True, args.loss_type)
+        # Data split
+        for i in torch.arange(0, length_traj, 1):
+            X[s*length_traj + i] = u_short[i]
+            # X[s*length_traj + i] = [eta_mean, eta_std, ]
+            # print("1", s*length_traj + i, X[s*length_traj + i])
+            Y[s*length_traj + i] = u_short[1+i]
+            # print("2", s*length_traj+i, Y[s*length_traj + i] )
+        # print("X", X[(s*length_traj)+i], "Y", Y[(s*length_traj)+i])
+
+
+    for s in range(num_samples_test):
+        u_list = run_KS(u0, c, dx, dt, T+1, eta_samples[s], gamma_samples[s], False, device)
+        u_short = u_list[:, 1:-1].detach().cpu() # remove the last boundary node and keep the first boundary node as it is initial condition
+        plot_KS(u_short, dx, n, c, eta_samples[s], gamma_samples[s], u_short.shape[0]*dt, dt, False, True, True, args.loss_type)
+        # Data split
+        for i in torch.arange(0, length_traj, 1):
+            X_test[s*length_traj + i] = u_short[i]
+            Y_test[s*length_traj + i] = u_short[1+i]
+    
+    dataset = [X, Y, X_test, Y_test]
+    data_config = [num_train, num_test, args.batch_size, dim, eta, gamma]
 
     # train setting
     n_store, k = 100, 0
-    train_config = [n_store, k, args.num_epoch, args.threshold, args.reg_param]
+    if args.cotangent == "ones":
+        cotangent = torch.ones_like(dim).to('cuda')
+    elif args.cotangent == "rand":
+        cotangent = torch.rand(dim).to('cuda')
+    elif args.cotangent == "FIM":
+        covariance_mat = FIM(args.c, dyn_setting, u0, delta = 0.001)
+        eigval, eigvecs = torch.linalg.eig(covariance_mat)
+        print(eigvecs.shape)
+        cotangent = eigvecs[:, 0].float().to('cuda') # choose the first eigenvector (each column is eigen vector)
+        
+    train_config = [n_store, k, args.num_epoch, args.threshold, args.reg_param, cotangent]
 
     # call main
     main(logger, args.loss_type, dataset, data_config, dyn_setting, train_config)

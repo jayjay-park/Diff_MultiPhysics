@@ -245,10 +245,8 @@ def main(logger, loss_type):
 
     if loss_type == "JAC":
 
-        # create random matrix by n x r
-        randm = torch.randn(n_train, dim, r)
-        # randm = torch.eye(*(dim, r))
 
+        # randm = torch.eye(*(dim, r))
         traj, vjp_lorenz = vjp(lorenz, 0., x)
         True_J = vjp_lorenz(randm)[1]
 
@@ -256,6 +254,8 @@ def main(logger, loss_type):
         True_j = torch.zeros(n_train, dim, r)
         Q_list = torch.zeros(n_train, dim, r)
         for j in range(n_train):
+            # create random matrix by n x r
+            randm = torch.randn(dim, r)
             approx = torch.mm(True_J_full[j].T, randm)
             Q, R = torch.linalg.qr(approx)
             True_j[j] = torch.mm(True_J_full[j].T, Q)

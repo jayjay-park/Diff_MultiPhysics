@@ -57,3 +57,16 @@ print("Step 3: ", weight.grad)
 vjp_true_norm = jacobian_analytical(w2)
 vjp_true_norm.backward()
 print("Step 3: ", w2.grad)
+
+
+##########################################
+print("New expt")
+x = torch.randn([5])
+f = lambda x: x.sin().sum()
+(_, vjpfunc) = torch.func.vjp(f, x)
+grad = vjpfunc(torch.tensor(1.))[0]
+print("x", x)
+print("f", f)
+print("vjpfunc", vjpfunc)
+print("grad", grad)
+assert torch.allclose(grad, torch.func.grad(f)(x))
