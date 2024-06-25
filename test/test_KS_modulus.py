@@ -229,7 +229,7 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
     test_list = [X_test, Y_test]
     train_data = TensorDataset(*train_list)
     test_data = TensorDataset(*test_list)
-    dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=False)
+    dataloader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
     print("Mini-batch: ", len(dataloader), dataloader.batch_size)
 
@@ -493,7 +493,7 @@ if __name__ == "__main__":
 
     # Generate Training/Test/Multi-Step Prediction Data
     torch.cuda.empty_cache()
-    num_samples_train = 3
+    num_samples_train = 1
     num_samples_test = 1
     length_traj = int((T-1) * int(1/dt))
     u_list_all = []
@@ -509,7 +509,7 @@ if __name__ == "__main__":
     print("eta", eta_samples)
     print("gamma", gamma_samples)
 
-    num_train = num_samples_train * (T-1) *int(1/dt)
+    num_train = num_samples_train * (T-1) *3*int(1/dt)
     num_test = num_samples_test * (T-1) * 3 *int(1/dt)
     print("num of train", num_train)
     print("num of test", num_test)
@@ -521,28 +521,28 @@ if __name__ == "__main__":
 
     for s in range(num_samples_train):
         print("s", s)
-        u_list = run_KS(u0, c, dx, dt, T+1, eta_samples[s], gamma_samples[s], False, device)
+        u_list = run_KS(u0, c, dx, dt, T*3+1, eta_samples[s], gamma_samples[s], False, device)
         u_short = u_list[:, 1:-1].detach().cpu() # remove the last boundary node and keep the first boundary node as it is initial condition
         print("list length", length_traj)
         plot_KS(u_short, dx, n, c, eta_samples[s], gamma_samples[s], u_short.shape[0]*dt, dt, True, False, True, args.loss_type)
         # Data split
-        for i in torch.arange(0, length_traj, 1):
-            X[s*length_traj + i] = u_short[i]
+        for i in torch.arange(0, length_traj*3, 1):
+            X[s*length_traj*3 + i] = u_short[i]
             # X[s*length_traj + i] = [eta_mean, eta_std, ]
             # print("1", s*length_traj + i, X[s*length_traj + i])
-            Y[s*length_traj + i] = u_short[1+i]
+            Y[s*length_traj*3 + i] = u_short[1+i]
             # print("2", s*length_traj+i, Y[s*length_traj + i] )
         # print("X", X[(s*length_traj)+i], "Y", Y[(s*length_traj)+i])
 
 
     for s in range(num_samples_test):
-        u_list = run_KS(u0, c, dx, dt, T*3+1, eta_samples[s], gamma_samples[s], False, device)
+        u_list = run_KS(u0, c, dx, dt, T*4+1, eta_samples[s], gamma_samples[s], False, device)
         u_short = u_list[:, 1:-1].detach().cpu() # remove the last boundary node and keep the first boundary node as it is initial condition
         plot_KS(u_short, dx, n, c, eta_samples[s], gamma_samples[s], u_short.shape[0]*dt, dt, False, True, True, args.loss_type)
         # Data split
-        for i in torch.arange(0, length_traj*3, 1):
-            X_test[s*length_traj*3 + i] = u_short[i]
-            Y_test[s*length_traj*3 + i] = u_short[1+i]
+        for i in torch.arange(0, length_traj*4, 1):
+            X_test[s*length_traj*4 + i] = u_short[i]
+            Y_test[s*length_traj*4 + i] = u_short[1+i]
     
     dataset = [X, Y, X_test, Y_test]
     data_config = [num_train, num_test, args.batch_size, dim, eta, gamma]
