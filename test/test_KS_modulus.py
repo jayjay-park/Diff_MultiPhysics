@@ -129,12 +129,14 @@ def FIM_noise(params, setting, init, eta, gamma, delta = 0.001):
     listX = []
     dx, dt, c, n, T = setting
 
-    gaussian_noise = np.random.normal(0., 1.0, (init.shape[0]))
-    init_noise = init + torch.tensor(gaussian_noise).to('cuda')
+    gaussian_noise = np.random.normal(0., 1.0, (2))
+    eta_noise = eta + torch.tensor(gaussian_noise[0]).to('cuda')
+    gamma_noise = eta + torch.tensor(gaussian_noise[1]).to('cuda')
     true_C = run_KS(init[1:-1], c, dx, dt, dt*2, eta, gamma, False, device)[-1]
     print("true", true_C, true_C.shape)
-    simulated_C = run_KS(init_noise[1:-1], c, dx, dt, dt*2, eta, gamma, False, device)[-1]
+    simulated_C = run_KS(init[1:-1], c, dx, dt, dt*2, eta_noise, gamma_noise, False, device)[-1]
     log_likelihood = lambda simulated: 0.5*torch.norm(simulated - true_C)**2
+    # This jacobian is not differentiated by parameter...
     jacobian = jacrev(log_likelihood, argnums=0)(simulated_C) # 127
     jacobian = jacobian.reshape(-1, 1)
     FIM = torch.mm(jacobian, jacobian.T) 
@@ -234,7 +236,7 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
     model = FNO(
         in_channels=1,
         out_channels=1,
-        num_fno_modes=20,
+        num_fno_modes=25,
         padding=4,
         dimension=1,
         latent_channels=128
@@ -316,8 +318,8 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
             idx += 1
             end_time = time.time()  
             elapsed_time_train.append(end_time - start_time)
-            test_true.append(y_true.detach().cpu().numpy())
-            test_pred.append(y_pred.squeeze().detach().cpu().numpy())
+            # test_true.append(y_true.detach().cpu().numpy())
+            # test_pred.append(y_pred.squeeze().detach().cpu().numpy())
             rel_err = torch.norm(y_pred - y_true) / torch.norm(y_true)
             
         mse_diff.append(mse)
@@ -359,11 +361,11 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
 
     print("Creating plot...")
     print("len", len(test_true), len(test_true[0]))
-    true_traj = np.array(test_true).reshape(num_train+num_test, dim)
-    learned_traj = np.array(test_pred).reshape(num_train+num_test, dim)
+    true_traj = np.array(test_true).reshape(num_test, dim)
+    learned_traj = np.array(test_pred).reshape(num_test, dim)
 
-    plot_KS(true_traj, dx, n, c, 0, 0, (num_train+num_test)*dt, dt, False, False, True, loss_type)
-    plot_KS(learned_traj, dx, n, c, 0, 0, (num_train+num_test)*dt, dt, False, False, False, loss_type)
+    plot_KS(true_traj, dx, n, c, 0, 0, (num_test)*dt, dt, False, False, True, loss_type)
+    plot_KS(learned_traj, dx, n, c, 0, 0, (num_test)*dt, dt, False, False, False, loss_type)
 
     print("Create loss plot")
     jac_diff = np.asarray(jac_diff)
@@ -492,7 +494,7 @@ if __name__ == "__main__":
     # Generate Training/Test/Multi-Step Prediction Data
     torch.cuda.empty_cache()
     num_samples_train = 3
-    num_samples_test = 3
+    num_samples_test = 1
     length_traj = int((T-1) * int(1/dt))
     u_list_all = []
     # create pairs of eta and gamma
@@ -502,11 +504,13 @@ if __name__ == "__main__":
     gamma_std = 0.2
     eta_samples = torch.normal(mean=eta_mean, std=eta_std, size=(num_samples_train + num_samples_test,))
     gamma_samples = torch.normal(mean=gamma_mean, std=gamma_std, size=(num_samples_train + num_samples_test,))
+    logger.info("%s: %s", "eta_samples", str(eta_samples))
+    logger.info("%s: %s", "gamma_samples", str(gamma_samples))
     print("eta", eta_samples)
     print("gamma", gamma_samples)
 
     num_train = num_samples_train * (T-1) *int(1/dt)
-    num_test = num_samples_test * (T-1) *int(1/dt)
+    num_test = num_samples_test * (T-1) * 3 *int(1/dt)
     print("num of train", num_train)
     print("num of test", num_test)
 
@@ -532,31 +536,38 @@ if __name__ == "__main__":
 
 
     for s in range(num_samples_test):
-        u_list = run_KS(u0, c, dx, dt, T+1, eta_samples[s], gamma_samples[s], False, device)
+        u_list = run_KS(u0, c, dx, dt, T*3+1, eta_samples[s], gamma_samples[s], False, device)
         u_short = u_list[:, 1:-1].detach().cpu() # remove the last boundary node and keep the first boundary node as it is initial condition
         plot_KS(u_short, dx, n, c, eta_samples[s], gamma_samples[s], u_short.shape[0]*dt, dt, False, True, True, args.loss_type)
         # Data split
-        for i in torch.arange(0, length_traj, 1):
-            X_test[s*length_traj + i] = u_short[i]
-            Y_test[s*length_traj + i] = u_short[1+i]
+        for i in torch.arange(0, length_traj*3, 1):
+            X_test[s*length_traj*3 + i] = u_short[i]
+            Y_test[s*length_traj*3 + i] = u_short[1+i]
     
     dataset = [X, Y, X_test, Y_test]
     data_config = [num_train, num_test, args.batch_size, dim, eta, gamma]
 
     # train setting
     n_store, k = 100, 0
-    if args.cotangent == "ones":
-        cotangent = torch.ones_like(dim).to('cuda')
-    elif args.cotangent == "rand":
-        cotangent = torch.rand(dim).to('cuda')
-    elif args.cotangent == "FIM":
-        # params, setting, init, eta, gamma, delta = 0.001
-        covariance_mat = FIM_noise(args.c, dyn_setting, u0, eta_samples[0], gamma_samples[0], delta = 0.001)
-        eigval, eigvecs = torch.linalg.eig(covariance_mat)
-        print(eigvecs.shape)
-        cotangent = eigvecs[:, 0].float().to('cuda') # choose the first eigenvector (each column is eigen vector)
+    if args.loss_type == "JAC":
+        if args.cotangent == "ones":
+            cotangent = torch.ones_like(dim).to('cuda')
+        elif args.cotangent == "rand":
+            cotangent = torch.rand(dim).to('cuda')
+        elif args.cotangent == "FIM":
+            # params, setting, init, eta, gamma, delta = 0.001
+            covariance_mat = FIM_noise(args.c, dyn_setting, u0, eta_samples[0], gamma_samples[0], delta = 0.001)
+            eigval, eigvecs = torch.linalg.eig(covariance_mat)
+            # Find the index of the largest eigenvalue
+            largest_eigval_index = torch.argmax(eigval.double())
+            # Get the corresponding eigenvector
+            cotangent = eigvecs[:, largest_eigval_index].float().to('cuda') # choose the first eigenvector (each column is eigen vector)
+            print(eigval, largest_eigval_index, cotangent)
+            logger.info("%s: %s", "max eigval", str(largest_eigval_index))
         
-    train_config = [n_store, k, args.num_epoch, args.threshold, args.reg_param, cotangent]
+        train_config = [n_store, k, args.num_epoch, args.threshold, args.reg_param, cotangent]
+    else:
+        train_config = [n_store, k, args.num_epoch, args.threshold, None, None]
 
     # call main
     main(logger, args.loss_type, dataset, data_config, dyn_setting, train_config)
