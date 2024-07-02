@@ -1,0 +1,28 @@
+time_step: 0.25
+lr: 0.001
+weight_decay: 0.0005
+num_epoch: 200
+num_trans: 0
+iters: 6000
+threshold: 0.0
+batch_size: 20
+loss_type: MSE
+reg_param: 0.9
+c: 0.0
+dim: 127
+T: 6
+optim_name: AdamW
+cotangent: FIM
+dyn_sys: KS
+eta_samples: tensor([1.0673, 1.0258])
+gamma_samples: tensor([1.0469, 1.0461])
+Model Size: 12.800296783447266
+Loss Type: MSE
+Cotangent: None
+Batch Size: 20
+Training Loss: tensor(3.7431e-07, device='cuda:0', grad_fn=<DivBackward0>)
+Test Loss: tensor(0.0563, device='cuda:0', grad_fn=<AddBackward0>)
+Relative Error: tensor(0.8490, device='cuda:0', grad_fn=<DivBackward0>)
+Mean Diff: tensor(2.0721)
+Var Diff: tensor(0.7528)
+MSE diff: 1.122940261666372e-06

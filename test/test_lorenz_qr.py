@@ -244,12 +244,9 @@ def main(logger, loss_type):
 
 
     if loss_type == "JAC":
-
-
         # randm = torch.eye(*(dim, r))
         traj, vjp_lorenz = vjp(lorenz, 0., x)
         True_J = vjp_lorenz(randm)[1]
-
 
         True_j = torch.zeros(n_train, dim, r)
         Q_list = torch.zeros(n_train, dim, r)

@@ -313,7 +313,7 @@ def main(logger, loss_type):
     print("Finished Computing")
     model_size = model_size(model)
     # Save the model
-    torch.save(model.state_dict(), f"../test_result/best_model_FNO_{loss_type}.pth")
+    torch.save(model.state_dict(), f"../test_result/best_model_FNO_Lorenz_{loss_type}.pth")
 
     if loss_type == "JAC":
         with open('../test_result/Time/Modulus_FNO_elapsed_times_Jacobian.csv', 'w', newline='') as csvfile:
@@ -330,14 +330,14 @@ def main(logger, loss_type):
 
 
     print("Creating plot...")
-    phase_path = f"../plot/Phase_plot/FNO_Modulus_{loss_type}.png"
+    phase_path = f"../plot/Phase_plot/FNO_Lorenz_{loss_type}.png"
     plot_attractor(model, [lorenz, 3, 0.01], 50, phase_path)
 
     print("Create loss plot")
     jac_diff = np.asarray(jac_diff)
     print(jac_diff.shape)
     mse_diff = np.asarray(mse_diff)
-    path = f"../plot/Loss/FNO_Modulus_{loss_type}.png"
+    path = f"../plot/Loss/FNO_Lorenz_{loss_type}.png"
 
     fig, ax = subplots()
     ax.plot(jac_diff[10:], "P-", lw=2.0, ms=5.0, label=r"$\|J^Tv - \hat{J}^Tv\|$")
@@ -396,6 +396,6 @@ if __name__ == "__main__":
     logger = logging.getLogger()
 
     # call main
-    main(logger, "JAC")
+    main(logger, "MSE")
     # MSE | epoch:  1599 loss:  4.928406633553095e-05 test loss:  0.0015732439933344722
     # JAC | epoch:  2724 loss:  4.7205154260154814e-05 test loss:  0.00018358735542278737

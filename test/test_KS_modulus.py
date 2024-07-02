@@ -455,7 +455,7 @@ if __name__ == "__main__":
     parser.add_argument("--reg_param", type=float, default=0.9) #1e-6
     parser.add_argument("--c", type=float, default=0.)
     parser.add_argument("--dim", type=int, default=127, choices = [127, 200, 1024]) 
-    parser.add_argument("--T", type=int, default=301, choices = [5, 11, 51, 101, 201, 301, 501, 1001, 1501])
+    parser.add_argument("--T", type=int, default=11, choices = [5, 11, 51, 101, 201, 301, 501, 1001, 1501])
     parser.add_argument("--optim_name", default="AdamW", choices=["AdamW", "Adam", "RMSprop", "SGD"])
     parser.add_argument("--cotangent", default="FIM", choices=["ones", "rand", "QR", "FIM", "score"])
     parser.add_argument("--dyn_sys", default="KS", choices=DYNSYS_MAP.keys())
@@ -510,7 +510,7 @@ if __name__ == "__main__":
     print("gamma", gamma_samples)
 
     num_train = num_samples_train * (T-1) *3*int(1/dt)
-    num_test = num_samples_test * (T-1) * 3 *int(1/dt)
+    num_test = num_samples_test * (T-1) * 4 *int(1/dt)
     print("num of train", num_train)
     print("num of test", num_test)
 
