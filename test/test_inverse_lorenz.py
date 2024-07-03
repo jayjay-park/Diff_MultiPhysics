@@ -72,7 +72,7 @@ for n in bar:
     running_average = smoothing * running_average + (1 - smoothing) * loss
     bar.set_description(f"Loss: {running_average:,.2f}")
 
-num_samples = 2000
+num_samples = 10000
 posterior_predictive = pyro.infer.Predictive(
     lorenz_probabilistic,
     guide=guide,
@@ -98,19 +98,21 @@ rho_samples = posterior_draws['rho'].cpu().numpy().flatten()
 
 # global font size
 plt.rcParams.update({'font.size': 14})
-hist_color = "indigo"
+bin_num =70
+# Specify credible regions as contours
+levels = [0.5, 0.9]  # Contour levels for 50% and 90% credible regions
 
 # Create distribution plots for beta, sigma, and rho
 fig, axs = plt.subplots(3, 1, figsize=(8, 12))
-sns.histplot(beta_samples, stat='density', kde=True, ax=axs[0], element="step", fill=False, bins=100)
+sns.histplot(beta_samples, stat="probability", kde=False, ax=axs[0], element="step", fill=False, bins=bin_num)
 axs[0].set_title(rf"Posterior dist of $\beta$, mean = {beta_mean:.4f}")
 axs[0].set_xlabel(r"$\beta$")
 axs[0].set_ylabel('Density')
-sns.histplot(sigma_samples, stat='density', kde=True, ax=axs[1], element="step", fill=False, bins=100)
+sns.histplot(sigma_samples, stat="probability", kde=False, ax=axs[1], element="step", fill=False, bins=bin_num)
 axs[1].set_title(rf"Posterior dist of $\sigma$, mean = {sigma_mean:.4f}")
 axs[1].set_xlabel(r"$\sigma$")
 axs[1].set_ylabel('Density')
-sns.histplot(rho_samples, stat='density', kde=True, ax=axs[2], element="step", fill=False, bins=100)
+sns.histplot(rho_samples, stat="probability", kde=False, ax=axs[2], element="step", fill=False, bins=bin_num)
 axs[2].set_title(rf"Posterior dist of $\rho$, mean = {rho_mean:.4f}")
 axs[2].set_xlabel(r"$\rho$")
 axs[2].set_ylabel('Density')
@@ -119,18 +121,34 @@ plt.savefig(f"../test_result/Lorenz_inv_dist_{str(loss_type)}.png")
 
 # Create contour plot for beta and sigma
 fig, ax = plt.subplots(figsize=(8, 6))
-sns.scatterplot(x=beta_samples, y=sigma_samples, ax=ax, color='blue', alpha=0.5)
-sns.kdeplot(x=beta_samples, y=sigma_samples, ax=ax, color='black')
-ax.set_title(r"Contour plot of $\beta$ vs $\sigma$")
+sns.scatterplot(x=beta_samples, y=sigma_samples, ax=ax, color='blue', alpha=0.3)
+if loss_type == "JAC":
+    sns.scatterplot(x=[2.66], y=[10.0], color='orange', marker='o', s=50, label='True Parameter Value', ax=ax)
+# sns.kdeplot(x=beta_samples, y=sigma_samples, ax=ax, color='black')
+# Plot credible regions as contours
+for level in levels:
+    sns.kdeplot(
+        x=beta_samples, y=sigma_samples, ax=ax, 
+        levels=[level], color='black', linewidths=1.5, linestyle='--', label=f"Credible Region: {str(level*100)}%"
+    )
+ax.set_title(r"$\beta$ vs $\sigma$")
 ax.set_xlabel(r"$\beta$")
 ax.set_ylabel(r"$\sigma$")
 plt.savefig(f"../test_result/Lorenz_{str(loss_type)}_betasigma.png")
+plt.close()
 
 # Create contour plot for rho and sigma
 fig, ax = plt.subplots(figsize=(8, 6))
-sns.scatterplot(x=rho_samples, y=sigma_samples, ax=ax, color='blue', alpha=0.5)
-sns.kdeplot(x=rho_samples, y=sigma_samples, ax=ax, color='black')
-ax.set_title(r"Contour plot of $\rho$ vs $\sigma$")
+sns.scatterplot(x=rho_samples, y=sigma_samples, ax=ax, color='blue', alpha=0.3)
+if loss_type == "JAC":
+    sns.scatterplot(x=[28.], y=[10.0], color='orange', marker='o', s=50, label='True Parameter Value', ax=ax)
+# sns.kdeplot(x=rho_samples, y=sigma_samples, ax=ax, color='black')
+for l in levels:
+    sns.kdeplot(
+        x=rho_samples, y=sigma_samples, ax=ax, 
+        levels=[l], color='black', linewidths=1.5, linestyle='--', label=f"Credible Region: {str(l*100)}%"
+    )
+ax.set_title(r"$\rho$ vs $\sigma$")
 ax.set_xlabel(r"$\rho$")
 ax.set_ylabel(r"$\sigma$")
 plt.savefig(f"../test_result/Lorenz_{str(loss_type)}_rhosigma.png")
