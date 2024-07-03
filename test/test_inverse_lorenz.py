@@ -10,6 +10,7 @@ from modulus.models.fno import FNO
 from modulus.models.mlp.fully_connected import FullyConnected
 import matplotlib.pyplot as plt  # Import matplotlib
 import seaborn as sns
+from scipy.stats import gaussian_kde
 
 
 # initialize
@@ -62,18 +63,16 @@ svi = pyro.infer.SVI(lorenz_probabilistic, guide, optim, loss=pyro.infer.Trace_E
 
 niter = 10000
 pyro.clear_param_store()
-
 running_average = 0.0
 smoothing = 0.99
-
 bar = tqdm.tqdm(range(niter))
+
 for n in bar:
-    loss = svi.step(learned_traj)
-    
+    loss = svi.step(learned_traj)    
     running_average = smoothing * running_average + (1 - smoothing) * loss
     bar.set_description(f"Loss: {running_average:,.2f}")
 
-num_samples = 1000
+num_samples = 2000
 posterior_predictive = pyro.infer.Predictive(
     lorenz_probabilistic,
     guide=guide,
@@ -83,28 +82,55 @@ posterior_predictive = pyro.infer.Predictive(
 posterior_draws = {k: v.unsqueeze(0) for k, v in posterior_predictive(learned_traj).items()}
 print("posterior draws", posterior_draws['beta'].shape)
 
-# compute mean
+# Compute the mean of beta, sigma, and rho
+beta_mean = posterior_draws['beta'].mean()
+sigma_mean = posterior_draws['sigma'].mean()
+rho_mean = posterior_draws['rho'].mean()
 
-posteriors = arviz.from_dict(posterior_draws)
-print(posteriors)
+print(f"Mean of beta: {beta_mean}")
+print(f"Mean of sigma: {sigma_mean}")
+print(f"Mean of rho: {rho_mean}")
 
-# Inspect the groups available in the InferenceData object
-print(posteriors.groups()) # posterior
-# Access a specific dataset, e.g., the posterior
-posterior_data = posteriors.posterior
-# Now you can inspect the shape of the specific dataset
-print("posterior shape", posterior_data)
+# Convert posterior draws to numpy arrays for plotting
+beta_samples = posterior_draws['beta'].cpu().numpy().flatten()
+sigma_samples = posterior_draws['sigma'].cpu().numpy().flatten()
+rho_samples = posterior_draws['rho'].cpu().numpy().flatten()
 
-# Save the plot to a file
-# fig = arviz.plot_posterior(posteriors, var_names=["sigma", "rho", "beta"])
-fig = arviz.plot_pair(
-    posteriors,
-    var_names=["sigma", "rho", "beta"],
-    kind=["scatter", "kde"],
-    kde_kwargs={"fill_last": False},
-    marginals=True,
-    point_estimate="median",
-    figsize=(11.5, 5)
-)
-plt.savefig("../plot/Post/Lorenz_posterior"+str(loss_type)+".png")  # Save the figure
-plt.show()  # Show the plot if running interactively
+# global font size
+plt.rcParams.update({'font.size': 14})
+hist_color = "indigo"
+
+# Create distribution plots for beta, sigma, and rho
+fig, axs = plt.subplots(3, 1, figsize=(8, 12))
+sns.histplot(beta_samples, stat='density', kde=True, ax=axs[0], element="step", fill=False, bins=100)
+axs[0].set_title(rf"Posterior dist of $\beta$, mean = {beta_mean:.4f}")
+axs[0].set_xlabel(r"$\beta$")
+axs[0].set_ylabel('Density')
+sns.histplot(sigma_samples, stat='density', kde=True, ax=axs[1], element="step", fill=False, bins=100)
+axs[1].set_title(rf"Posterior dist of $\sigma$, mean = {sigma_mean:.4f}")
+axs[1].set_xlabel(r"$\sigma$")
+axs[1].set_ylabel('Density')
+sns.histplot(rho_samples, stat='density', kde=True, ax=axs[2], element="step", fill=False, bins=100)
+axs[2].set_title(rf"Posterior dist of $\rho$, mean = {rho_mean:.4f}")
+axs[2].set_xlabel(r"$\rho$")
+axs[2].set_ylabel('Density')
+plt.tight_layout()
+plt.savefig(f"../test_result/Lorenz_inv_dist_{str(loss_type)}.png")
+
+# Create contour plot for beta and sigma
+fig, ax = plt.subplots(figsize=(8, 6))
+sns.scatterplot(x=beta_samples, y=sigma_samples, ax=ax, color='blue', alpha=0.5)
+sns.kdeplot(x=beta_samples, y=sigma_samples, ax=ax, color='black')
+ax.set_title(r"Contour plot of $\beta$ vs $\sigma$")
+ax.set_xlabel(r"$\beta$")
+ax.set_ylabel(r"$\sigma$")
+plt.savefig(f"../test_result/Lorenz_{str(loss_type)}_betasigma.png")
+
+# Create contour plot for rho and sigma
+fig, ax = plt.subplots(figsize=(8, 6))
+sns.scatterplot(x=rho_samples, y=sigma_samples, ax=ax, color='blue', alpha=0.5)
+sns.kdeplot(x=rho_samples, y=sigma_samples, ax=ax, color='black')
+ax.set_title(r"Contour plot of $\rho$ vs $\sigma$")
+ax.set_xlabel(r"$\rho$")
+ax.set_ylabel(r"$\sigma$")
+plt.savefig(f"../test_result/Lorenz_{str(loss_type)}_rhosigma.png")
