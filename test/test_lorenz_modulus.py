@@ -14,6 +14,7 @@ import math
 from torch.func import vmap, vjp
 from matplotlib.pyplot import *
 from mpl_toolkits.mplot3d import axes3d
+import seaborn as sns
 
 # mpirun -n 2 python test_....
 
@@ -36,6 +37,7 @@ class Timer:
         self.elapsed_time = self.end_time - self.start_time
         self.elapsed_times.append(self.elapsed_time)
         return False
+
 
 def main(logger, loss_type):
 
@@ -64,6 +66,7 @@ def main(logger, loss_type):
         t_eval_point = torch.arange(0, tot_time, time_step)
 
         # Generate trajectory using the dynamical system
+        # lorenz(t, u, params=[10.0,28.0,8/3])
         traj = torchdiffeq.odeint(dyn, torch.randn(dim), t_eval_point, method='rk4', rtol=1e-8)
         traj = traj[n_trans:]  # Discard transient part
 
@@ -197,13 +200,97 @@ def main(logger, loss_type):
         return
 
     print("Creating Dataset")
-    n_train = 4000
-    n_test = 3000
+    def FIM_noise(params, S_K, C, setting, init, eta, gamma, delta = 0.001):
+
+        listX = []
+        dx, dt, c, n, T = setting
+
+        log_likelihood = lambda simulated: 0.5*torch.norm(simulated - C)**2
+        # This jacobian is not differentiated by parameter...
+        jacobian = jacrev(log_likelihood, argnums=0)(simulated_C) # 127
+        jacobian = jacobian.reshape(-1, 1)
+        FIM = torch.mm(jacobian, jacobian.T) 
+        # average ...
+
+        return FIM
+
+    n_train = 3000
+    n_test = 2000
     batch_size = 200
-    dataset = create_data([lorenz, 3, 0.01], n_train=n_train, n_test=n_test, n_val=0, n_trans=0)
-    train_list = [dataset[0], dataset[1]]
-    val_list = [dataset[2], dataset[3]]
-    test_list = [dataset[4], dataset[5]]
+    num_init = 10
+    train_x, train_y, val_x, val_y, test_x, test_y = [], [], [], [], [], []
+    for i in range(num_init):
+        dataset = create_data([lorenz, 3, 0.01], n_train=int(n_train/num_init), n_test=int(n_test/num_init), n_val=0, n_trans=500)
+
+        n_train=int(n_train/num_init)
+        n_test = int(n_test/num_init)
+        n_val=0
+        n_trans=500
+        time_step = 0.01
+        dim = 3
+        dyn = lambda t, u, param:lorenz(t, u, params=param) # 
+        param = torch.tensor([10.0,28.0,8/3])
+
+        # Adjust total time to account for the validation set
+        tot_time = time_step * (n_train + n_test + n_val + n_trans + 1)
+        t_eval_point = torch.arange(0, tot_time, time_step)
+        # Generate trajectory using the dynamical system
+        traj = lambda p: torchdiffeq.odeint(dyn(t, u, p), torch.randn(dim), t_eval_point, method='rk4', rtol=1e-8)[n_trans:]  # Discard transient part
+
+        # Create training dataset
+        org_traj = traj(param)
+        X_train = org_traj[:n_train]
+        Y_train = org_traj[1:n_train + 1]
+        
+        # Shift trajectory for validation dataset
+        traj = org_traj[n_train:]
+        X_val = org_traj[:n_val]
+        Y_val = org_traj[1:n_val + 1]
+
+        # Shift trajectory for test dataset
+        traj = org_traj[n_val:]
+        X_test = org_traj[:n_test]
+        Y_test = org_traj[1:n_test + 1]
+        dataset = [X_train, Y_train, X_val, Y_val, X_test, Y_test]
+
+        print("dataset", dataset[0].shape)
+        noise = np.random.normal(scale=0.05, size=3)
+        # noisy_observations = observations * (1 + noise)
+        train_x.append(dataset[0]* (1 + noise).astype(float))
+        train_y.append(dataset[1]* (1 + noise).astype(float))
+        val_x.append(dataset[2]* (1 + noise).astype(float))
+        val_y.append(dataset[3]* (1 + noise).astype(float))
+        test_x.append(dataset[4]* (1 + noise).astype(float))
+        test_y.append(dataset[5]* (1 + noise).astype(float))
+        # compute FIM of train_x
+        listX = []
+        S = lambda p_set: traj(p_set)[:n_train] 
+        C = lambda p_set: traj(p_set)[:n_train]* (1 + noise).astype(float)
+        log_likelihood = lambda K: 0.5*torch.norm(S(K) - C(K))**2
+        jacobian = jacrev(log_likelihood, argnums=0)(param) # 127
+        jacobian = jacobian.reshape(-1, 1)
+        FIM = torch.mm(jacobian, jacobian.T) 
+
+    train_list = [torch.stack(train_x).reshape(-1, 3).float(), torch.stack(train_y).reshape(-1, 3).float()]
+    val_list = [torch.stack(val_x).reshape(-1, 3).float(), torch.stack(val_y).reshape(-1, 3).float()]
+    test_list = [torch.stack(test_x).reshape(-1, 3).float(), torch.stack(test_y).reshape(-1, 3).float()]
+    print("train shape: ", train_list[0].shape)
+    # Convert the first element of train_list[0] to a NumPy array
+    data_to_plot = train_list[0][:,0].cpu().numpy()
+
+    # Create a distribution plot
+    # Create a figure and axes
+    fig, ax = subplots(figsize=(8, 6))
+
+    # Plot using seaborn histplot
+    sns.histplot(data_to_plot, kde=True, color='indigo', alpha=0.6, bins=80, element="step", fill=False, ax=ax)
+
+    # Customize labels, title, etc.
+    ax.set_title('Histogram with KDE')
+    ax.set_xlabel('Data')
+    ax.set_ylabel('Density')
+    # Save the figure
+    fig.savefig("histogram_kde.png")
 
     train_data = TensorDataset(*train_list)
     test_data = TensorDataset(*test_list)
@@ -237,7 +324,7 @@ def main(logger, loss_type):
     jac_diff_train, jac_diff_test = torch.empty(n_store+1), torch.empty(n_store+1)
     print("Computing analytical Jacobian")
     t = torch.linspace(0, time_step, 2).cuda()
-    threshold = 0.00005
+    threshold = 0.
     f = lambda x: torchdiffeq.odeint(lorenz, x, t, method="rk4")[1]
     torch.cuda.empty_cache()
     timer = Timer()
@@ -326,7 +413,6 @@ def main(logger, loss_type):
         writer.writerow(['Epoch', 'Elapsed Time (seconds)'])
         for epoch, elapsed_time in enumerate(elapsed_time_train, 1):
             writer.writerow([epoch, elapsed_time])
-    
 
 
     print("Creating plot...")
@@ -397,5 +483,3 @@ if __name__ == "__main__":
 
     # call main
     main(logger, "MSE")
-    # MSE | epoch:  1599 loss:  4.928406633553095e-05 test loss:  0.0015732439933344722
-    # JAC | epoch:  2724 loss:  4.7205154260154814e-05 test loss:  0.00018358735542278737
