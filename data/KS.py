@@ -266,6 +266,7 @@ def implicit_rk(u, c, dx, dt, alpha, beta, device):
     return dt * (3/4*k2 - 1/4*k3 + 1/2*k4)
 
 def plot_KS(u_list, dx, n, c, eta, gamma, T, dt, train, test, ground_truth,loss_type):
+
     if torch.is_tensor(u_list):
         u_list = np.array(u_list.detach().cpu())
     else:
@@ -286,21 +287,28 @@ def plot_KS(u_list, dx, n, c, eta, gamma, T, dt, train, test, ground_truth,loss_
 
     if train:
         if ground_truth:
+            print('../plot/Phase_plot/KS/true_train_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
             fig.savefig('../plot/Phase_plot/KS/true_train_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
         else:
+            print('../plot/Phase_plot/KS/pred_train_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
             fig.savefig('../plot/Phase_plot/KS/pred_train_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
     elif test:
         if ground_truth:
+            print('../plot/Phase_plot/KS/true_test_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
             fig.savefig('../plot/Phase_plot/KS/true_test_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
         else:
+            print('../plot/Phase_plot/KS/pred_test_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
             fig.savefig('../plot/Phase_plot/KS/pred_test_' + str(loss_type) + '_'+ str(eta) + '_'+ str(gamma) + '{0:.1f}.png'.format(c))
     elif not train and not test:
         print("all!")
         if ground_truth:
+            print('../plot/Phase_plot/KS/KS_all_'+str(loss_type)+'_true.png')
             fig.savefig('../plot/Phase_plot/KS/KS_all_'+str(loss_type)+'_true.png')
         else:
+            print('../plot/Phase_plot/KS/KS_all_'+str(loss_type)+'_pred.png')
             fig.savefig('../plot/Phase_plot/KS/KS_all_'+str(loss_type)+'_pred.png')
     else:
+        print('../plot/KS/KS_' + str(loss_type) + '{0:.1f}.png'.format(c))
         fig.savefig('../plot/KS/KS_' + str(loss_type) + '{0:.1f}.png'.format(c))
     return
 

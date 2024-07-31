@@ -1,0 +1,9 @@
+Computing rest of metrics...
+Loss Type: JAC
+Batch Size: 500
+Training Loss: tensor(7.7220e-06, device='cuda:0', grad_fn=<AddBackward0>)
+Test Loss: tensor(0.0038, device='cuda:0', grad_fn=<AddBackward0>)
+Learned mean: tensor([ 8.3124,  8.3867, 27.0932], device='cuda:0', grad_fn=<MeanBackward1>)
+True mean: tensor([-1.7539, -1.7451, 24.1082])
+MSE diff: 5.881648348804447e-06
+JAC diff: 1.820782654249342e-05

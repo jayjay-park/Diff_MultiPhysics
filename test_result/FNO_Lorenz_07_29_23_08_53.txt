@@ -1,0 +1,28 @@
+time_step: 0.01
+lr: 0.001
+weight_decay: 0.0005
+num_epoch: 1000
+num_train: 1000
+num_test: 1000
+num_trans: 0
+iters: 6000
+threshold: 0.0
+batch_size: 500
+loss_type: JAC
+reg_param: 0.9
+num_init: 10
+c: 0.0
+noise: 0.01
+dim: 3
+T: 201
+optim_name: AdamW
+cotangent: FIM
+dyn_sys: Lorenz
+Loss Type: JAC
+Batch Size: 500
+Training Loss: tensor(1.6151e-05, device='cuda:0', grad_fn=<AddBackward0>)
+Test Loss: tensor(0.0090, device='cuda:0', grad_fn=<AddBackward0>)
+Learned mean: tensor([ 8.1961,  8.3640, 27.1270], device='cuda:0', grad_fn=<MeanBackward1>)
+True mean: tensor([-1.7539, -1.7451, 24.1082])
+MSE diff: 1.3605797448690282e-05
+JAC diff: 2.9037666536169127e-05
