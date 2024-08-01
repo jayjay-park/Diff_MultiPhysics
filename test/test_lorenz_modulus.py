@@ -420,10 +420,6 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
             lowest_loss = full_test_loss
             torch.save(model.state_dict(), f"../test_result/best_model_FNO_Lorenz_{loss_type}.pth")
 
-    print("Finished Computing")
-    # Save the model
-    torch.save(model.state_dict(), f"../test_result/best_model_FNO_Lorenz_{loss_type}.pth")
-
     if loss_type == "JAC":
         with open('../test_result/Time/Modulus_FNO_elapsed_times_Jacobian.csv', 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
@@ -531,8 +527,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_epoch", type=int, default=1200)
     # parser.add_argument("--integration_time", type=int, default=0) #100
     parser.add_argument("--num_train", type=int, default=3000) #3000
-    parser.add_argument("--num_test", type=int, default=1000)#3000
-    parser.add_argument("--num_trans", type=int, default=200) #10000
+    parser.add_argument("--num_test", type=int, default=1000) #3000
+    parser.add_argument("--num_trans", type=int, default=200)
     parser.add_argument("--iters", type=int, default=6000)
     parser.add_argument("--threshold", type=float, default=0.)
     parser.add_argument("--batch_size", type=int, default=500)

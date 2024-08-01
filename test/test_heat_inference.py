@@ -31,6 +31,7 @@ def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
 nx, ny = 50, 50
 true_k = torch.exp(torch.randn(nx, ny, device=device))
 q = torch.ones((nx, ny), device=device) * 100
+true_T = solve_heat_equation(true_k, q)
 trainedFNO = FNO(
                 in_channels=1,
                 out_channels=1,
@@ -45,11 +46,11 @@ trainedFNO.load_state_dict(torch.load(FNO_path))
 trainedFNO.eval()
 # true_T = solve_heat_equation(true_k, q)
 print("shape", true_k.unsqueeze(dim=0).unsqueeze(dim=1).float().cuda().shape)
-true_T = trainedFNO(true_k.unsqueeze(dim=0).unsqueeze(dim=1).float().cuda()).squeeze()
+pred_T = trainedFNO(true_k.unsqueeze(dim=0).unsqueeze(dim=1).float().cuda()).squeeze()
 
 # Add noise to create observed data
 noise_std = 0.1
-observed_T = true_T + noise_std * torch.randn_like(true_T)
+# observed_T = true_T + noise_std * torch.randn_like(true_T)
 
 # Pyro model: probabilistic model
 def model(observed=None):
@@ -82,7 +83,7 @@ svi = SVI(model, guide, adam, loss=Trace_ELBO())
 # Run inference
 num_iterations = 1000
 for i in range(num_iterations):
-    loss = svi.step(observed_T)
+    loss = svi.step(pred_T)
     if (i+1) % 100 == 0:
         print(f"Iteration {i+1}/{num_iterations} - Loss: {loss}")
 
@@ -92,22 +93,23 @@ inferred_k = torch.exp(inferred_log_k_loc)
 
 # Plot results
 fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+plt.rcParams.update({'font.size': 14})
 
 im0 = axes[0, 0].imshow(true_k.cpu().numpy(), cmap='viridis')
 axes[0, 0].set_title("True Thermal Conductivity (k)")
-fig.colorbar(im0, ax=axes[0, 0])
+fig.colorbar(im0, ax=axes[0, 0], fraction=0.045, pad=0.06)
 
 im1 = axes[0, 1].imshow(inferred_k.cpu().numpy(), cmap='viridis')
 axes[0, 1].set_title("Inferred Thermal Conductivity (k)")
-fig.colorbar(im1, ax=axes[0, 1])
+fig.colorbar(im1, ax=axes[0, 1], fraction=0.045, pad=0.06)
 
 im2 = axes[1, 0].imshow(true_T.detach().cpu().numpy(), cmap='viridis')
 axes[1, 0].set_title("True Temperature (T)")
-fig.colorbar(im2, ax=axes[1, 0])
+fig.colorbar(im2, ax=axes[1, 0], fraction=0.045, pad=0.06)
 
-im3 = axes[1, 1].imshow(observed_T.detach().cpu().numpy(), cmap='viridis')
-axes[1, 1].set_title("Observed Temperature (T)")
-fig.colorbar(im3, ax=axes[1, 1])
+im3 = axes[1, 1].imshow(pred_T.detach().cpu().numpy(), cmap='viridis')
+axes[1, 1].set_title("Predicted Temperature (T)")
+fig.colorbar(im3, ax=axes[1, 1], fraction=0.045, pad=0.06)
 
 plt.tight_layout()
 plt.savefig(f"../test_result/Heat_"+str(loss_type)+".png")
