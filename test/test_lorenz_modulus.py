@@ -344,7 +344,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
     jac_diff_train, jac_diff_test = torch.empty(n_store+1), torch.empty(n_store+1)
     print("Computing analytical Jacobian")
     t = torch.linspace(0, time_step, 2).cuda()
-    threshold = 0.0009
+    threshold = 0.005
     f = lambda x: torchdiffeq.odeint(lorenz, x, t, method="rk4")[1]
     torch.cuda.empty_cache()
     timer = Timer()
@@ -352,6 +352,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
     jac_diff = []
     mse_diff = []
     test_loss_store = []
+    lowest_loss = 1000000
 
     if loss_type == "JAC":
         # len_train = len(dataloader) * dataloader.batch_size
@@ -385,7 +386,6 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
                 with timer:
                     x = data[0].unsqueeze(dim=2).to('cuda')
                     output, vjp_func = vjp(model, x)
-                    # cotangent = torch.ones_like(x)
                     vjp_out = vjp_func(cotangent_batch)[0].squeeze()
 
                     jac_norm_diff = criterion(True_J[idx], vjp_out)
@@ -395,8 +395,6 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
             full_loss += loss
             idx += 1
             end_time = time.time()  
-            # elapsed_time_train.append(end_time - start_time)
-            # loss.backward(retain_graph=True)
             optimizer.step()
             
         mse_diff.append(mse)
@@ -407,15 +405,8 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
         for test_data in test_dataloader:
             y_test_true = test_data[1].to('cuda')
             y_test_pred = model(test_data[0].unsqueeze(dim=2).to('cuda'))
-
             test_loss = criterion(y_test_pred.view(batch_size, -1), y_test_true.view(batch_size, -1))
             full_test_loss += test_loss.detach().cpu().numpy()
-
-        # for test_data in test_dataloader:
-        #     y_test_true = test_data[1].to('cuda')
-        #     y_test_pred = model(test_data[0].unsqueeze(dim=2).to('cuda'))
-        #     test_loss = criterion(y_test_pred.view(batch_size, -1), y_test_true.view(batch_size, -1))
-        #     full_test_loss += test_loss
 
         test_loss_store.append(full_test_loss)
         print("epoch: ", epoch, "loss: ", full_loss.item(), "test loss: ", full_test_loss.item())
@@ -424,6 +415,10 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
             print("Stopping early as the loss is below the threshold.")
             break
         
+        if full_test_loss < lowest_loss:
+            print("saved lowest loss model")
+            lowest_loss = full_test_loss
+            torch.save(model.state_dict(), f"../test_result/best_model_FNO_Lorenz_{loss_type}.pth")
 
     print("Finished Computing")
     # Save the model
@@ -533,14 +528,14 @@ if __name__ == "__main__":
     parser.add_argument("--time_step", type=float, default=0.01) #0.25
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=2000)
+    parser.add_argument("--num_epoch", type=int, default=1200)
     # parser.add_argument("--integration_time", type=int, default=0) #100
-    parser.add_argument("--num_train", type=int, default=1000) #3000
+    parser.add_argument("--num_train", type=int, default=3000) #3000
     parser.add_argument("--num_test", type=int, default=1000)#3000
-    parser.add_argument("--num_trans", type=int, default=2000) #10000
+    parser.add_argument("--num_trans", type=int, default=200) #10000
     parser.add_argument("--iters", type=int, default=6000)
     parser.add_argument("--threshold", type=float, default=0.)
-    parser.add_argument("--batch_size", type=int, default=1000)
+    parser.add_argument("--batch_size", type=int, default=500)
     parser.add_argument("--loss_type", default="JAC", choices=["JAC", "MSE"])
     parser.add_argument("--reg_param", type=float, default=0.5) 
     parser.add_argument("--num_init", type=int, default=5)
@@ -613,7 +608,7 @@ if __name__ == "__main__":
 
     # compute FIM of train_x
     t = torch.linspace(0, 10, 1000)
-    fim = compute_fim_wrt_input(true_model, initial_state, t, train_list[0][:t.shape[0]], args.noise)
+    fim = compute_fim(true_model, initial_state, t, train_list[0][:t.shape[0]], args.noise)
     # Note that the eigenvalues and eigenvectors can be complex even if the input matrix has real values. If you are sure that your matrix will have real eigenvalues and eigenvectors, you can use torch.linalg.eigvals to get only the eigenvalues, or torch.linalg.eigh for Hermitian (symmetric if real) matrices, which guarantees real eigenvalues and orthogonal eigenvectors:
     eigenvalues, eigenvectors = torch.linalg.eigh(fim)
     print("fim", fim)

@@ -45,7 +45,7 @@ model = FNO(
         num_fno_modes=3,
         padding=4,
         dimension=1,
-        latent_channels=128).to('cuda')
+        latent_channels=64).to('cuda')
 FNO_path = "../test_result/best_model_FNO_Lorenz_"+str(loss_type)+".pth"
 model.load_state_dict(torch.load(FNO_path))
 model.eval()

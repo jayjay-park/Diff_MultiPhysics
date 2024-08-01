@@ -1,1 +1,2 @@
 *.h5
+test_result/best_model_FNO_Heat_MSE.pth

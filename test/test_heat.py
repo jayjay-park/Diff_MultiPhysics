@@ -62,7 +62,55 @@ def generate_dataset(num_samples, nx=50, ny=50):
         q = torch.ones((nx, ny), device=device) * 100  # Constant heat source term
         T = solve_heat_equation(k, q)
         dataset.append((k, T))
+
+    # verify
+    k, q = dataset[0][0].cpu().numpy(), torch.ones((nx, ny), device=device) * 100
+    T = solve_heat_equation(k, q).cpu().numpy()
+    dx = dy = 1.0 / (nx - 1)
+    validate_heat_solver(k, q, T, dx, dy)
     return dataset
+
+def validate_heat_solver(k, q, T, dx, dy):
+    nx, ny = T.shape
+    
+    # 1. Conservation of energy
+    total_source = np.sum(q) * dx * dy
+    flux_left = np.sum(k[0, :] * (T[1, :] - T[0, :]) / dx)
+    flux_right = np.sum(k[-1, :] * (T[-1, :] - T[-2, :]) / dx)
+    flux_bottom = np.sum(k[:, 0] * (T[:, 1] - T[:, 0]) / dy)
+    flux_top = np.sum(k[:, -1] * (T[:, -1] - T[:, -2]) / dy)
+    total_flux = flux_left + flux_right + flux_bottom + flux_top
+    
+    # 2. Temperature distribution
+    mid_x = T[nx//2, :]
+    mid_y = T[:, ny//2]
+    
+    # Create plots
+    fig, axs = plt.subplots(2, 2, figsize=(15, 15))
+    
+    # Temperature distribution
+    im = axs[0, 0].imshow(T, cmap='hot', interpolation='nearest')
+    axs[0, 0].set_title('Temperature Distribution')
+    plt.colorbar(im, ax=axs[0, 0])
+    
+    # Mid-line plots
+    axs[0, 1].plot(mid_x)
+    axs[0, 1].set_title('Temperature along mid-x')
+    axs[1, 0].plot(mid_y)
+    axs[1, 0].set_title('Temperature along mid-y')
+    
+    # Energy conservation
+    axs[1, 1].bar(['Total Source', 'Total Flux'], [total_source, total_flux])
+    axs[1, 1].set_title('Energy Conservation')
+    
+    plt.tight_layout()
+    plt.savefig('heat_equation_validation.png')
+    plt.close()
+
+    print(f"Total heat source: {total_source}")
+    print(f"Total heat flux: {total_flux}")
+    print(f"Difference: {abs(total_source - total_flux)}")
+    return
 
 class HeatDataset(torch.utils.data.Dataset):
     def __init__(self, data):
@@ -76,14 +124,6 @@ class HeatDataset(torch.utils.data.Dataset):
 
 
 ### Compute Metric ###
-def compute_mse(model, dataloader):
-    mse = 0.0
-    with torch.no_grad():
-        for k, T in dataloader:
-            k, T = k.to(device), T.to(device)
-            output = model(k)
-            mse += F.mse_loss(output, T).item()
-    return mse / len(dataloader)
 
 def plot_results(k, T_true, T_pred, path):
     plt.rcParams.update({'font.size': 14})
@@ -112,10 +152,10 @@ def main(logger, args, loss_type, dataloader, test_dataloader):
     model = FNO(
         in_channels=1,
         out_channels=1,
-        num_fno_modes=7,
+        num_fno_modes=21,
         padding=3,
         dimension=2,
-        latent_channels=32
+        latent_channels=64
     ).to('cuda')
 
 
@@ -143,14 +183,14 @@ def main(logger, args, loss_type, dataloader, test_dataloader):
             
             optimizer.zero_grad()
             output = model(k)
-            loss = criterion(output, T)
+            loss = criterion(output, T) / torch.norm(T)
             
             loss.backward()
             optimizer.step()
             
             full_loss += loss.item()
         
-        mse_diff.append(full_loss / len(dataloader))
+        mse_diff.append(full_loss)
         
         # Validation
         model.eval()
@@ -189,7 +229,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader):
     path = f"../plot/Loss/FNO_Heat_{loss_type}.png"
 
     fig, ax = plt.subplots()
-    ax.plot(mse_diff[10:], "P-", lw=2.0, ms=5.0, label="MSE")
+    ax.plot(mse_diff, "P-", lw=2.0, ms=5.0, label="MSE")
     ax.set_xlabel("Epochs",fontsize=24)
     ax.xaxis.set_tick_params(labelsize=24)
     ax.yaxis.set_tick_params(labelsize=24)
@@ -218,11 +258,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=5000)
-    parser.add_argument("--num_train", type=int, default=1000)
-    parser.add_argument("--num_test", type=int, default=200)
+    parser.add_argument("--num_epoch", type=int, default=1000)
+    parser.add_argument("--num_train", type=int, default=2000)
+    parser.add_argument("--num_test", type=int, default=1800)
     parser.add_argument("--threshold", type=float, default=1e-5)
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=100)
     parser.add_argument("--loss_type", default="MSE", choices=["MSE"])
     parser.add_argument("--nx", type=int, default=50)
     parser.add_argument("--ny", type=int, default=50)
@@ -240,7 +280,7 @@ if __name__ == "__main__":
 
     # Generate Training/Test Data
     print("Creating Dataset")
-    # dataset = generate_dataset(args.num_train + args.num_test, args.nx, args.ny)
+    dataset = generate_dataset(args.num_train + args.num_test, args.nx, args.ny)
     # train_dataset = HeatDataset(dataset[:args.num_train])
     # test_dataset = HeatDataset(dataset[args.num_train:])
 

@@ -1,3 +1,4 @@
 *.hdf5 filter=lfs diff=lfs merge=lfs -text
 .h5 filter=lfs diff=lfs merge=lfs -text
 *.h5 filter=lfs diff=lfs merge=lfs -text
+test_result/best_model_FNO_Heat_MSE.pth filter=lfs diff=lfs merge=lfs -text
