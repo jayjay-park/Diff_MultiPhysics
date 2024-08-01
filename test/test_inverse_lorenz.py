@@ -56,7 +56,7 @@ MSE_model = FNO(
         num_fno_modes=3,
         padding=4,
         dimension=1,
-        latent_channels=128).to('cuda')
+        latent_channels=64).to('cuda')
 MSE_FNO_path = "../test_result/best_model_FNO_Lorenz_MSE.pth"
 MSE_model.load_state_dict(torch.load(MSE_FNO_path))
 MSE_model.eval()
