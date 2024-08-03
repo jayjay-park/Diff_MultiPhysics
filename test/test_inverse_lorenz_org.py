@@ -45,8 +45,8 @@ model = FNO(
         num_fno_modes=3,
         padding=4,
         dimension=1,
-        latent_channels=64).to('cuda')
-FNO_path = "../test_result/best_model_FNO_Lorenz_"+str(loss_type)+".pth"
+        latent_channels=128).to('cuda')
+FNO_path = "../test_result/best_model_FNO_Lorenz_"+str(loss_type)+"_old.pth"
 model.load_state_dict(torch.load(FNO_path))
 model.eval()
 
@@ -115,7 +115,7 @@ true_beta = 8 / 3
 fig, axs = plt.subplots(3, 1, figsize=(8, 12))
 # Plot for beta
 sns.histplot(beta_samples, stat="probability", kde=False, ax=axs[0], element="step", fill=False, bins=bin_num)
-axs[0].set_title(rf"Posterior dist of $\beta$, mean = {JAC_beta_mean:.4f}")
+axs[0].set_title(rf"Posterior dist of $\beta$, mean = {beta_mean:.4f}")
 axs[0].set_xlabel(r"$\beta$")
 axs[0].set_ylabel('Density')
 axs[0].axvline(true_beta, color='b', linestyle='--', linewidth=2, label=rf'True $\beta$ = {true_beta:.4f}')

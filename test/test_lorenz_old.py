@@ -351,6 +351,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
     elapsed_time_train = []
     jac_diff = []
     mse_diff = []
+    lowest_loss = 1000000
 
     if loss_type == "JAC":
         # len_train = len(dataloader) * dataloader.batch_size
@@ -409,6 +410,11 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
             full_test_loss += test_loss
         
         print("epoch: ", epoch, "loss: ", full_loss.item(), "test loss: ", full_test_loss.item())
+
+        if full_test_loss < lowest_loss:
+            print("saved lowest loss model")
+            lowest_loss = full_test_loss
+            torch.save(model.state_dict(), f"../test_result/best_model_FNO_Lorenz_{loss_type}_old.pth")
 
         if full_loss < threshold:
             print("Stopping early as the loss is below the threshold.")

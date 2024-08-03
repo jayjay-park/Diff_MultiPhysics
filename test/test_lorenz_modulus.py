@@ -524,9 +524,9 @@ if __name__ == "__main__":
     parser.add_argument("--time_step", type=float, default=0.01) #0.25
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=1200)
+    parser.add_argument("--num_epoch", type=int, default=2000)
     # parser.add_argument("--integration_time", type=int, default=0) #100
-    parser.add_argument("--num_train", type=int, default=3000) #3000
+    parser.add_argument("--num_train", type=int, default=4000) #3000
     parser.add_argument("--num_test", type=int, default=1000) #3000
     parser.add_argument("--num_trans", type=int, default=200)
     parser.add_argument("--iters", type=int, default=6000)
