@@ -145,7 +145,7 @@ def plot_results(k, T_true, T_pred, path):
     plt.savefig(path)
     plt.close()
 
-def main(logger, args, loss_type, dataloader, test_dataloader):
+def main(logger, args, loss_type, dataloader, test_dataloader, vec):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print("Device: ", device)
 
@@ -183,7 +183,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader):
             
             optimizer.zero_grad()
             output = model(k)
-            loss = criterion(output, T) / torch.norm(T)
+            loss = criterion(output.squeeze(), T) / torch.norm(T)
             
             loss.backward()
             optimizer.step()
@@ -280,7 +280,7 @@ if __name__ == "__main__":
 
     # Generate Training/Test Data
     print("Creating Dataset")
-    dataset = generate_dataset(args.num_train + args.num_test, args.nx, args.ny)
+    # dataset = generate_dataset(args.num_train + args.num_test, args.nx, args.ny)
     # train_dataset = HeatDataset(dataset[:args.num_train])
     # test_dataset = HeatDataset(dataset[args.num_train:])
 
@@ -310,6 +310,30 @@ if __name__ == "__main__":
         
         return list(zip(k_data, T_data))
 
+    def log_likelihood(data, model_output, noise_std):
+        return -0.5 * torch.sum((data - model_output)**2) / (noise_std**2) - \
+           data.numel() * torch.log(torch.tensor(noise_std))
+
+    def compute_fim_for_2d_heat(solve_heat_equation, k, q, T_data, noise_std, nx=50, ny=50):
+        # Ensure k is a tensor with gradient tracking
+        k = torch.tensor(k, requires_grad=True).cuda()
+        fim = torch.zeros((nx*ny, nx*ny))
+        
+        # Add noise
+        mean = 0.0
+        std_dev = 0.1
+
+        # Generate Gaussian noise
+        noise = torch.randn(k.size()) * std_dev + mean
+        # Solve heat equation
+        T_pred = solve_heat_equation(k, q.cuda(), nx, ny) + noise.cuda()
+        ll = log_likelihood(T_data, T_pred, noise_std)
+        flat_Jacobian = torch.autograd.grad(ll, k, create_graph=True)[0].flatten() # 50 by 50 -> [2500]
+        flat_Jacobian = flat_Jacobian.reshape(1, -1)
+        fim = torch.matmul(flat_Jacobian.T, flat_Jacobian)
+
+        return fim
+
     train_dataset = HeatDataset(load_dataset_from_csv('../data/train', args.nx, args.ny))
     test_dataset = HeatDataset(load_dataset_from_csv('../data/test', args.nx, args.ny))
 
@@ -322,17 +346,38 @@ if __name__ == "__main__":
 
     print("Mini-batch: ", len(train_loader), train_loader.batch_size)
 
-    # train
-    main(logger, args, args.loss_type, train_loader, test_loader)
+    # compute FIM eigenvector
+    nx, ny = 50, 50
+    k = torch.exp(torch.randn(nx, ny)).cuda()  # Log-normal distribution for k
+    q = torch.ones((nx, ny)) * 100  # Constant heat source term
+    T_data = solve_heat_equation(k, q.cuda(), nx, ny)  # This is your ground truth data
+    noise_std = 0.01  # Adjust as needed
+    num_samples = 10
 
-    # def load_dataset_from_csv(prefix, nx, ny):
-    # k_df = pd.read_csv(f'{prefix}_k.csv')
-    # T_df = pd.read_csv(f'{prefix}_T.csv')
-    
-    # k_data = [torch.tensor(row.values).reshape(nx, ny) for _, row in k_df.iterrows()]
-    # T_data = [torch.tensor(row.values).reshape(nx, ny) for _, row in T_df.iterrows()]
-    
-    # return list(zip(k_data, T_data))
+    fim = compute_fim_for_2d_heat(solve_heat_equation, k, q, T_data, noise_std, nx, ny)
+
+    # Compute FIM
+    for s in range(num_samples-1):
+        print(s)
+        k = torch.exp(torch.randn(nx, ny)).cuda()  # Log-normal distribution for k
+        fim += compute_fim_for_2d_heat(solve_heat_equation, k, q, T_data, noise_std, nx, ny)
+    fim /= num_samples
+
+    # Analyze the FIM
+    eigenvalues, eigenvec = torch.linalg.eigh(fim)
+    # print("shape", eigenvalues.shape, eigenvec.shape) -> torch.Size([2500]) torch.Size([2500, 2500])
+    # Get the eigenvector corresponding to the largest eigenvalue
+    idx = torch.argmax(eigenvalues)
+    largest_eigenvector = eigenvec[:, idx]
+
+    print("Largest Eigenvalue and index:", eigenvalues[idx], idx)
+    print("Corresponding Eigenvector:", largest_eigenvector)
+    print("eigenvalue: ", eigenvalues)
+    print("eigenvector: ", eigenvec)
+
+
+    # train
+    main(logger, args, args.loss_type, train_loader, test_loader, eigenvec)
 
 
 
