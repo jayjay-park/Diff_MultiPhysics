@@ -16,6 +16,7 @@ from torch.func import vmap, vjp
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
 import seaborn as sns
+from functorch import vjp, vmap
 
 from torch.utils.data import DataLoader, TensorDataset
 from modulus.models.fno import FNO
@@ -124,7 +125,6 @@ class HeatDataset(torch.utils.data.Dataset):
 
 
 ### Compute Metric ###
-
 def plot_results(k, T_true, T_pred, path):
     plt.rcParams.update({'font.size': 14})
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
@@ -167,9 +167,40 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
 
     criterion = torch.nn.MSELoss()
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=1e-3)
+    nx, ny = args.nx, args.ny
+
+    ### Gradient-matching ###
+    if args.loss_type == "JAC":
+        csv_filename = f'../data/true_j_{nx}_{ny}_{args.num_train}.csv'
+        if os.path.exists(csv_filename):
+            # Load True_j
+            True_j_flat = pd.read_csv(csv_filename).values
+            True_j = torch.tensor(True_j_flat).reshape(len(dataloader), dataloader.batch_size, nx, ny)
+            print(f"Data loaded from {csv_filename}")
+        else:
+            True_j = torch.zeros(len(dataloader), dataloader.batch_size, nx, ny)
+            q = torch.ones((nx, ny)) * 100 
+            f = lambda x: solve_heat_equation(x, q.cuda())
+            # Iterate over the DataLoader
+            for batch_idx, (batch_data, batch_labels) in enumerate(dataloader):
+                for i in range(batch_data.shape[0]):  # Iterate over each sample in the batch
+                    # single sample [nx, ny]
+                    x = batch_data[i]
+                    output, vjp_tru_func = torch.func.vjp(f, x.cuda())
+                    print(batch_idx, i)
+                    True_j[batch_idx, i] = vjp_tru_func(vec)[0].detach().cpu()
+                    print(True_j[batch_idx, i].shape)
+
+            # Save True_j to a CSV file
+            True_j_flat = True_j.reshape(-1, nx * ny)  # Flatten the last two dimensions
+            pd.DataFrame(True_j_flat.numpy()).to_csv(csv_filename, index=False)
+            print(f"Data saved to {csv_filename}")
+        # Create vec_batch
+        vec_batch = vec.unsqueeze(0).repeat(dataloader.batch_size, 1, 1)
+        vec_batch = vec_batch.cuda()
+        
 
     ### Training Loop ###
-    # timer = Timer()
     elapsed_time_train = []
     mse_diff = []
 
@@ -177,18 +208,30 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
     for epoch in range(args.num_epoch):
         # start_time = time.time()
         full_loss, full_test_loss = 0.0, 0.0
+        idx = 0
         
         for k, T in dataloader:
             k, T = k.unsqueeze(dim=1).to(device).float(), T.to(device).float()
             
+            # MSE 
             optimizer.zero_grad()
             output = model(k)
             loss = criterion(output.squeeze(), T) / torch.norm(T)
-            
+
+            # GM
+            if args.loss_type == "JAC":
+                target = True_j[idx].cuda()
+                output, vjp_func = torch.func.vjp(model, k)
+                vjp_out = vjp_func(vec_batch)[0].squeeze()
+                jac_diff = criterion(target, vjp_out)
+                jac += jac_diff.detach().cpu().numpy()
+                loss += (jac_diff / torch.norm(target)) * args.reg_param
+
             loss.backward()
             optimizer.step()
             
             full_loss += loss.item()
+            idx += 1
         
         mse_diff.append(full_loss)
         
@@ -259,14 +302,15 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--num_epoch", type=int, default=1000)
-    parser.add_argument("--num_train", type=int, default=2000)
-    parser.add_argument("--num_test", type=int, default=1800)
+    parser.add_argument("--num_train", type=int, default=200)
+    parser.add_argument("--num_test", type=int, default=200)
     parser.add_argument("--threshold", type=float, default=1e-5)
     parser.add_argument("--batch_size", type=int, default=100)
-    parser.add_argument("--loss_type", default="MSE", choices=["MSE"])
+    parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC"])
     parser.add_argument("--nx", type=int, default=50)
     parser.add_argument("--ny", type=int, default=50)
     parser.add_argument("--noise", type=float, default=0.01)
+    parser.add_argument("--reg_param", type=float, default=0.9)
 
     args = parser.parse_args()
 
@@ -357,7 +401,7 @@ if __name__ == "__main__":
     fim = compute_fim_for_2d_heat(solve_heat_equation, k, q, T_data, noise_std, nx, ny)
 
     # Compute FIM
-    for s in range(num_samples-1):
+    for s in range(num_samples):
         print(s)
         k = torch.exp(torch.randn(nx, ny)).cuda()  # Log-normal distribution for k
         fim += compute_fim_for_2d_heat(solve_heat_equation, k, q, T_data, noise_std, nx, ny)
@@ -369,15 +413,17 @@ if __name__ == "__main__":
     # Get the eigenvector corresponding to the largest eigenvalue
     idx = torch.argmax(eigenvalues)
     largest_eigenvector = eigenvec[:, idx]
+    largest_eigenvector = largest_eigenvector.reshape(nx, ny)
 
     print("Largest Eigenvalue and index:", eigenvalues[idx], idx)
     print("Corresponding Eigenvector:", largest_eigenvector)
+    print("Eigenvector shape", largest_eigenvector.shape)
     print("eigenvalue: ", eigenvalues)
     print("eigenvector: ", eigenvec)
 
 
     # train
-    main(logger, args, args.loss_type, train_loader, test_loader, eigenvec)
+    main(logger, args, args.loss_type, train_loader, test_loader, largest_eigenvector)
 
 
 
