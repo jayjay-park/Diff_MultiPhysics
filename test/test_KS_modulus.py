@@ -25,59 +25,7 @@ from modulus.models.mlp.fully_connected import FullyConnected
 
 sys.path.append('..')
 from data.KS import *
-# from modulus.launch.logging import LaunchLogger
-# from modulus.launch.utils.checkpoint import save_checkpoint
 
-class Timer:
-    def __init__(self):
-        self.elapsed_times = []
-
-    def __enter__(self):
-        self.start_time = time.time()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.end_time = time.time()
-        self.elapsed_time = self.end_time - self.start_time
-        self.elapsed_times.append(self.elapsed_time)
-        return False
-
-# def create_data(traj, n_train, n_test, n_nodes, n_trans):
-#     ''' func: call simulate to create graph and train, test dataset
-#         args: ti, tf, init_state = param for simulate()
-#               n_train = num of training instance
-#               n_test = num of test instance
-#               n_nodes = num of nodes in graph
-#               n_trans = num of transition phase '''
-
-#     ##### create training dataset #####
-#     X = np.zeros((n_train, n_nodes))
-#     Y = np.zeros((n_train, n_nodes))
-
-#     if torch.is_tensor(traj):
-#         traj = traj.detach().cpu().numpy()
-#     for i in torch.arange(0, n_train, 1):
-#         i = int(i)
-#         X[i] = traj[n_trans+i]
-#         Y[i] = traj[n_trans+1+i]
-#         # print("X", X[i])
-
-#     X = torch.tensor(X).reshape(n_train,n_nodes)
-#     Y = torch.tensor(Y).reshape(n_train,n_nodes)
-
-#     ##### create test dataset #####
-#     X_test = np.zeros((n_test, n_nodes))
-#     Y_test = np.zeros((n_test, n_nodes))
-
-#     for i in torch.arange(0, n_test, 1):
-#         i = int(i)
-#         X_test[i] = traj[n_trans+n_train+i]
-#         Y_test[i] = traj[n_trans+1+n_train+i]
-
-#     X_test = torch.tensor(X_test).reshape(n_test, n_nodes)
-#     Y_test = torch.tensor(Y_test).reshape(n_test, n_nodes)
-
-#     return [X, Y, X_test, Y_test]
 
 def reg_jacobian_loss(time_step, True_J, cur_model_J, output_loss, reg_param):
     #reg_param: 1e-5 #5e-4 was working well #0.11
@@ -253,7 +201,7 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
 
     ### Training Loop ###
     n_store, k, num_epochs, threshold, reg_param, cotangent = train_config
-    timer = Timer()
+    # timer = Timer()
     elapsed_time_train = []
     jac_diff, mse_diff = [], []
 
@@ -409,7 +357,7 @@ def main(logger, loss_type, dataset, data_config, setting, train_config):
     True_var = torch.var(true_traj, dim = 0)
     Learned_var = torch.var(learned_traj, dim=0)
 
-    logger.info("%s: %s", "Model Size", str(modelsize))
+    # logger.info("%s: %s", "Model Size", str(modelsize))
     logger.info("%s: %s", "Loss Type", str(loss_type))
     logger.info("%s: %s", "Cotangent", str(cotangent))
     logger.info("%s: %s", "Batch Size", str(batch_size))

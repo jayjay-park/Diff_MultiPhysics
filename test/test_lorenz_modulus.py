@@ -325,7 +325,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
         num_fno_modes=3,
         padding=4,
         dimension=1,
-        latent_channels=128
+        latent_channels=64
     ).to('cuda')
 
     optimizer = torch.optim.AdamW(
@@ -344,13 +344,15 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
     jac_diff_train, jac_diff_test = torch.empty(n_store+1), torch.empty(n_store+1)
     print("Computing analytical Jacobian")
     t = torch.linspace(0, time_step, 2).cuda()
-    threshold = 0.
+    threshold = 0.005
     f = lambda x: torchdiffeq.odeint(lorenz, x, t, method="rk4")[1]
     torch.cuda.empty_cache()
     timer = Timer()
     elapsed_time_train = []
     jac_diff = []
     mse_diff = []
+    test_loss_store = []
+    lowest_loss = 1000000
 
     if loss_type == "JAC":
         # len_train = len(dataloader) * dataloader.batch_size
@@ -384,8 +386,8 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
                 with timer:
                     x = data[0].unsqueeze(dim=2).to('cuda')
                     output, vjp_func = vjp(model, x)
-                    # cotangent = torch.ones_like(x)
-                    vjp_out = vjp_func(cotangent_batch)[0].squeeze()
+                    cotangent = torch.ones_like(x)
+                    vjp_out = vjp_func(cotangent)[0].squeeze()
 
                     jac_norm_diff = criterion(True_J[idx], vjp_out)
                     jac += jac_norm_diff.detach().cpu().numpy()
@@ -394,29 +396,30 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
             full_loss += loss
             idx += 1
             end_time = time.time()  
-            elapsed_time_train.append(end_time - start_time)
+            optimizer.step()
             
         mse_diff.append(mse)
         jac_diff.append(jac)
         print(mse, jac)
-        full_loss.backward(retain_graph=True)
+        full_loss.backward()
         optimizer.step()
         
         for test_data in test_dataloader:
             y_test_true = test_data[1].to('cuda')
             y_test_pred = model(test_data[0].unsqueeze(dim=2).to('cuda'))
             test_loss = criterion(y_test_pred.view(batch_size, -1), y_test_true.view(batch_size, -1))
-            full_test_loss += test_loss
-        
+            full_test_loss += test_loss.detach().cpu().numpy()
+
+        test_loss_store.append(full_test_loss)
         print("epoch: ", epoch, "loss: ", full_loss.item(), "test loss: ", full_test_loss.item())
 
-        if full_loss < threshold:
+        if full_test_loss < threshold:
             print("Stopping early as the loss is below the threshold.")
             break
         
 
     print("Finished Computing")
-    # model_size = model_size(model)
+    model_size = model_size(model)
     # Save the model
     torch.save(model.state_dict(), f"../test_result/best_model_FNO_Lorenz_{loss_type}.pth")
 
@@ -439,9 +442,10 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
 
     print("Create loss plot")
     jac_diff = np.asarray(jac_diff)
-    print(jac_diff.shape)
     mse_diff = np.asarray(mse_diff)
+    test_loss_store = np.asarray(test_loss_store)
     path = f"../plot/Loss/FNO_Lorenz_{loss_type}.png"
+    test_path = f"../plot/Loss/FNO_Lorenz_test_{loss_type}.png"
 
     fig, ax = subplots()
     if loss_type == "JAC":
@@ -453,7 +457,19 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
     ax.legend(fontsize=24)
     ax.grid(True)
     tight_layout()
-    savefig(path, bbox_inches ='tight', pad_inches = 0.1)
+    fig.savefig(path, bbox_inches ='tight', pad_inches = 0.1)
+    close()
+
+    fig_test, axt = subplots()
+    axt.plot(test_loss_store[10:], "P-", lw=2.0, ms=5.0, label="MSE")
+    axt.set_xlabel("Epochs",fontsize=24)
+    axt.xaxis.set_tick_params(labelsize=24)
+    axt.yaxis.set_tick_params(labelsize=24)
+    axt.legend(fontsize=24)
+    axt.grid(True)
+    tight_layout()
+    fig_test.savefig(test_path, bbox_inches ='tight', pad_inches = 0.1)
+    close()
 
     # compute LE
     torch.cuda.empty_cache()
@@ -483,7 +499,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
     True_var = torch.var(true_traj, dim = 0)
     Learned_var = torch.var(learned_traj, dim=0)
 
-    # logger.info("%s: %s", "Model Size", str(model_size))
+    logger.info("%s: %s", "Model Size", str(model_size))
     logger.info("%s: %s", "Loss Type", str(loss_type))
     logger.info("%s: %s", "Batch Size", str(batch_size))
     logger.info("%s: %s", "Training Loss", str(full_loss))
@@ -499,45 +515,6 @@ def main(logger, args, loss_type, dataloader, test_dataloader, cotangent, batch_
 
 if __name__ == "__main__":
 
-    # Set device
-    torch.manual_seed(42)
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    torch.backends.cudnn.benchmark = True
-    print("device: ", device)
-
-    # Set arguments (hyperparameters)
-    DYNSYS_MAP = {'Lorenz': [lorenz, 3]}
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--time_step", type=float, default=0.01) #0.25
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=1000)
-    # parser.add_argument("--integration_time", type=int, default=0) #100
-    parser.add_argument("--num_train", type=int, default=5000) #3000
-    parser.add_argument("--num_test", type=int, default=1000)#3000
-    parser.add_argument("--num_trans", type=int, default=0) #10000
-    parser.add_argument("--iters", type=int, default=6000)
-    parser.add_argument("--threshold", type=float, default=0.)
-    parser.add_argument("--batch_size", type=int, default=1000)
-    parser.add_argument("--loss_type", default="JAC", choices=["JAC", "MSE"])
-    parser.add_argument("--reg_param", type=float, default=0.5) 
-    parser.add_argument("--num_init", type=int, default=10)
-    parser.add_argument("--c", type=float, default=0.)
-    parser.add_argument("--noise", type=float, default=0.01)
-    parser.add_argument("--dim", type=int, default=3, choices = [127, 200, 1024]) 
-    parser.add_argument("--T", type=int, default=201, choices = [5, 11, 51, 101, 201, 301, 501, 1001, 1501])
-    parser.add_argument("--optim_name", default="AdamW", choices=["AdamW", "Adam", "RMSprop", "SGD"])
-    parser.add_argument("--cotangent", default="FIM", choices=["ones", "rand", "QR", "FIM", "score"])
-    parser.add_argument("--dyn_sys", default="Lorenz", choices=DYNSYS_MAP.keys())
-
-    args = parser.parse_args()
-    true_params = [10.0, 28.0, 8/3]
-    dyn_sys_func = Lorenz63(*true_params)
-    dim = args.dim
-    dyn_sys_info = [dyn_sys_func, args.dyn_sys, dim]
-
-    # Save initial settings
     start_time = datetime.datetime.now().strftime("%m_%d_%H_%M_%S")
     out_file = os.path.join("../test_result/", f"FNO_Lorenz_{start_time}.txt")
     logging.basicConfig(filename=out_file, filemode="w", level=logging.INFO, format="%(message)s")
@@ -545,65 +522,5 @@ if __name__ == "__main__":
     for arg, value in vars(args).items():
         logger.info("%s: %s", arg, value)
 
-    # Generate Training/Test Data
-    print("Creating Dataset")
-    num_init = args.num_init
-    train_x, train_y, test_x, test_y = [], [], [], []
-    for i in range(num_init):
-
-        n_train= int(args.num_train/num_init)
-        n_test = int(args.num_test/num_init)
-        n_trans= args.num_trans
-        time_step = 0.01
-        dim = 3
-        initial_state = torch.randn(dim)
-
-        # Adjust total time, Generate traj
-        tot_time = time_step * (n_train + n_test + n_trans + 1)
-        t_eval_point = torch.arange(0, tot_time, time_step)
-        
-        true_model = Lorenz63(*true_params)
-        traj = torchdiffeq.odeint(true_model, initial_state, t_eval_point, method='rk4', rtol=1e-8)
-
-        # Create training dataset
-        org_traj = traj
-        X_train = org_traj[:n_train]
-        Y_train = org_traj[1:n_train + 1]
-
-        # Shift trajectory for test dataset
-        traj = org_traj[n_train:]
-        X_test = org_traj[:n_test]
-        Y_test = org_traj[1:n_test + 1]
-        dataset = [X_train, Y_train, X_test, Y_test]
-        print("dataset", dataset[0].shape)
-
-        # Add noise
-        noise = torch.normal(mean=0.0, std=args.noise, size=(3,))
-        train_x.append(dataset[0]* (1 + noise))
-        train_y.append(dataset[1]* (1 + noise))
-        test_x.append(dataset[2]* (1 + noise))
-        test_y.append(dataset[3]* (1 + noise))
-        print("Added noise")
-
-    train_list = [torch.stack(train_x).reshape(-1, 3).float(), torch.stack(train_y).reshape(-1, 3).float()]
-    test_list = [torch.stack(test_x).reshape(-1, 3).float(), torch.stack(test_y).reshape(-1, 3).float()]
-    print("train shape: ", train_list[0].shape)
-
-    # compute FIM of train_x
-    t = torch.linspace(0, 30, 3000)
-    # fim = compute_fim(true_model, initial_state, t, train_list[0][:t.shape[0]], args.noise)
-    fim = compute_fim(true_model, initial_state, t, train_list[0][:t.shape[0]], args.noise)
-    # Note that the eigenvalues and eigenvectors can be complex even if the input matrix has real values. If you are sure that your matrix will have real eigenvalues and eigenvectors, you can use torch.linalg.eigvals to get only the eigenvalues, or torch.linalg.eigh for Hermitian (symmetric if real) matrices, which guarantees real eigenvalues and orthogonal eigenvectors:
-    eigenvalues, eigenvectors = torch.linalg.eigh(fim)
-    print("fim", fim)
-    print("Eigenvalues:", eigenvalues)
-    print("Eigenvectors:", eigenvectors)
-
-    train_data = TensorDataset(*train_list)
-    test_data = TensorDataset(*test_list)
-    dataloader = DataLoader(train_data, batch_size=args.batch_size, shuffle=False)
-    test_dataloader = DataLoader(test_data, batch_size=args.batch_size, shuffle=False)
-    print("Mini-batch: ", len(dataloader), dataloader.batch_size)
-
-    # train
-    main(logger, args, args.loss_type, dataloader, test_dataloader, eigenvectors[0], batch_size=args.batch_size)
+    # call main
+    main(logger, "MSE")
