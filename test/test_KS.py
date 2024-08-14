@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 from matplotlib.pyplot import cm
 
 class KuramotoSivashinsky(nn.Module):
-    def __init__(self, nu=1, L=100, nx=1024, dt=0.01):
+    '''Credit: https://scicomp.stackexchange.com/questions/37336/solving-numerically-the-1d-kuramoto-sivashinsky-equation-using-spectral-methods'''
+
+    def __init__(self, nu=1, L=100, nx=1024, dt=0.05):
         super().__init__()
         self.nu = nu
         self.L = L
@@ -60,8 +62,8 @@ class KuramotoSivashinsky(nn.Module):
 nu = 1
 L = 100
 nx = 1024
-t0, tN = 0, 1000
-dt = 0.05
+t0, tN = 0, 200
+dt = 0.01
 nt = int((tN - t0) / dt)
 
 # Create model

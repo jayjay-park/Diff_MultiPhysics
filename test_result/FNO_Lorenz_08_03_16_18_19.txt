@@ -18,3 +18,11 @@ T: 201
 optim_name: AdamW
 cotangent: FIM
 dyn_sys: Lorenz
+Loss Type: JAC
+Batch Size: 1000
+Training Loss: tensor(2.7359e-05, device='cuda:0', grad_fn=<AddBackward0>)
+Test Loss: tensor(0.0166, device='cuda:0', grad_fn=<AddBackward0>)
+Learned mean: tensor([-0.2635, -0.8285, -0.7910], device='cuda:0', grad_fn=<MeanBackward1>)
+True mean: tensor([-1.7539, -1.7451, 24.1082])
+MSE diff: 2.1609593204630073e-05
+JAC diff: 8.863390485203126e-05

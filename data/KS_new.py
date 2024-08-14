@@ -6,7 +6,7 @@ from matplotlib.pyplot import cm
 from mpl_toolkits.mplot3d import Axes3D
 
 # Spatial grid and initial condition
-N = 128
+N = 1024
 x = 32*th.pi*th.arange(1, N + 1) / N
 u = th.cos(x / 16) * (1 + th.sin(x / 16))
 v = fft(u) # fourier transform of initial u
@@ -29,7 +29,7 @@ f3 = h * ((-4 - 3 * LR - LR**2 + LR.exp() * (4 - LR)) / LR**3).mean(dim=1).real
 # Timestepping
 uu = [u]
 tt = [0]
-tmax = 1000
+tmax = 200
 nmax = int(tmax / h)
 nplt = int((tmax / 100) / h)
 g = -.5j * k
