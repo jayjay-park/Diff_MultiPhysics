@@ -32,15 +32,25 @@ nx, ny = 50, 50
 true_k = torch.exp(torch.randn(nx, ny, device=device))
 q = torch.ones((nx, ny), device=device) * 100
 true_T = solve_heat_equation(true_k, q)
+# trainedFNO = FNO(
+#                 in_channels=1,
+#                 out_channels=1,
+#                 num_fno_modes=21,
+#                 padding=3,
+#                 dimension=2,
+#                 latent_channels=128
+#                 ).to('cuda')
 trainedFNO = FNO(
-                in_channels=1,
-                out_channels=1,
-                num_fno_modes=21,
-                padding=3,
-                dimension=2,
-                latent_channels=64
-                ).to('cuda')
-loss_type = "MSE"
+        in_channels=1,
+        out_channels=1,
+        decoder_layer_size=128,
+        num_fno_layers=6,
+        num_fno_modes=24,
+        padding=3,
+        dimension=2,
+        latent_channels=64
+    ).to('cuda')
+loss_type = "JAC"
 FNO_path = "../test_result/best_model_FNO_Heat_"+str(loss_type)+".pth"
 trainedFNO.load_state_dict(torch.load(FNO_path))
 trainedFNO.eval()
@@ -78,7 +88,7 @@ def guide(observed=None):
 # Set up the variational inference
 pyro.clear_param_store()
 adam = pyro.optim.Adam({"lr": 0.01})
-svi = SVI(model, guide, adam, loss=Trace_ELBO())
+svi = SVI(model, guide, adam, loss=Trace_ELBO(retain_graph=True))
 
 # Run inference
 num_iterations = 1000

@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.autograd.functional as F
 import torch.optim as optim
-import torchdiffeq
 import datetime
 import numpy as np
 import argparse
@@ -17,6 +16,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
 import seaborn as sns
 from functorch import vjp, vmap
+from torch.utils.data import Subset
 
 from torch.utils.data import DataLoader, TensorDataset
 from modulus.models.fno import FNO
@@ -123,6 +123,55 @@ class HeatDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return self.data[idx]
 
+### Auxiliary Function ###
+def save_dataset_to_csv(dataset, prefix):
+    k_data = []
+    T_data = []
+    
+    for k, T in dataset:
+        k_data.append(k.flatten().tolist())
+        T_data.append(T.flatten().tolist())
+    
+    k_df = pd.DataFrame(k_data)
+    T_df = pd.DataFrame(T_data)
+    
+    k_df.to_csv(f'{prefix}_k.csv', index=False)
+    T_df.to_csv(f'{prefix}_T.csv', index=False)
+    
+    print(f"Saved {prefix} dataset to CSV files")
+
+def load_dataset_from_csv(prefix, nx, ny):
+    k_df = pd.read_csv(f'{prefix}_k.csv')
+    T_df = pd.read_csv(f'{prefix}_T.csv')
+    
+    k_data = [torch.tensor(row.values).reshape(nx, ny) for _, row in k_df.iterrows()]
+    T_data = [torch.tensor(row.values).reshape(nx, ny) for _, row in T_df.iterrows()]
+    
+    return list(zip(k_data, T_data))
+
+def log_likelihood(data, model_output, noise_std):
+    return -0.5 * torch.sum((data - model_output)**2) / (noise_std**2) - \
+        data.numel() * torch.log(torch.tensor(noise_std))
+
+def compute_fim_for_2d_heat(solve_heat_equation, k, q, T_data, noise_std, nx=50, ny=50):
+    # Ensure k is a tensor with gradient tracking
+    k = torch.tensor(k, requires_grad=True).cuda()
+    fim = torch.zeros((nx*ny, nx*ny))
+    
+    # Add noise
+    mean = 0.0
+    std_dev = 0.1
+
+    # Generate Gaussian noise
+    noise = torch.randn(k.size()) * std_dev + mean
+    # Solve heat equation
+    T_pred = solve_heat_equation(k, q.cuda(), nx, ny) + noise.cuda()
+    ll = log_likelihood(T_data, T_pred, noise_std)
+    flat_Jacobian = torch.autograd.grad(ll, k, create_graph=True)[0].flatten() # 50 by 50 -> [2500]
+    flat_Jacobian = flat_Jacobian.reshape(1, -1)
+    fim = torch.matmul(flat_Jacobian.T, flat_Jacobian)
+
+    return fim
 
 ### Compute Metric ###
 def plot_results(k, T_true, T_pred, path):
@@ -145,6 +194,8 @@ def plot_results(k, T_true, T_pred, path):
     plt.savefig(path)
     plt.close()
 
+### Train ###
+
 def main(logger, args, loss_type, dataloader, test_dataloader, vec):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print("Device: ", device)
@@ -152,7 +203,9 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
     model = FNO(
         in_channels=1,
         out_channels=1,
-        num_fno_modes=21,
+        decoder_layer_size=128,
+        num_fno_layers=6,
+        num_fno_modes=24,
         padding=3,
         dimension=2,
         latent_channels=64
@@ -171,11 +224,13 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
 
     ### Gradient-matching ###
     if args.loss_type == "JAC":
-        csv_filename = f'../data/true_j_{nx}_{ny}_{args.num_train}.csv'
+        # csv_filename = f'../data/true_j_{nx}_{ny}_{args.num_train}.csv'
+        csv_filename = f'../data/true_j_{nx}_{ny}_200.csv'
         if os.path.exists(csv_filename):
             # Load True_j
             True_j_flat = pd.read_csv(csv_filename).values
-            True_j = torch.tensor(True_j_flat).reshape(len(dataloader), dataloader.batch_size, nx, ny)
+            print("len", True_j_flat.shape, len(dataloader)*dataloader.batch_size*nx*ny)
+            True_j = torch.tensor(True_j_flat)[:len(dataloader)*dataloader.batch_size, :].reshape(len(dataloader), dataloader.batch_size, nx, ny)
             print(f"Data loaded from {csv_filename}")
         else:
             True_j = torch.zeros(len(dataloader), dataloader.batch_size, nx, ny)
@@ -196,18 +251,20 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
             pd.DataFrame(True_j_flat.numpy()).to_csv(csv_filename, index=False)
             print(f"Data saved to {csv_filename}")
         # Create vec_batch
+        True_j = True_j.float()
         vec_batch = vec.unsqueeze(0).repeat(dataloader.batch_size, 1, 1)
-        vec_batch = vec_batch.cuda()
+        vec_batch = vec_batch.cuda().float()
         
 
     ### Training Loop ###
     elapsed_time_train = []
     mse_diff = []
+    lowest_loss = 10000000
 
     print("Beginning training")
     for epoch in range(args.num_epoch):
         # start_time = time.time()
-        full_loss, full_test_loss = 0.0, 0.0
+        full_loss, full_test_loss, jac_misfit = 0.0, 0.0, 0.0
         idx = 0
         
         for k, T in dataloader:
@@ -222,14 +279,14 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
             if args.loss_type == "JAC":
                 target = True_j[idx].cuda()
                 output, vjp_func = torch.func.vjp(model, k)
-                vjp_out = vjp_func(vec_batch)[0].squeeze()
+                vjp_out = vjp_func(vec_batch.unsqueeze(dim=1))[0].squeeze()
                 jac_diff = criterion(target, vjp_out)
-                jac += jac_diff.detach().cpu().numpy()
+                jac_misfit += jac_diff.detach().cpu().numpy()
                 loss += (jac_diff / torch.norm(target)) * args.reg_param
+                print(loss)
 
-            loss.backward()
+            loss.backward(retain_graph=True)
             optimizer.step()
-            
             full_loss += loss.item()
             idx += 1
         
@@ -245,7 +302,12 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
                 full_test_loss += test_loss.item()
         model.train()
         
-        print(f"Epoch: {epoch}, Train Loss: {full_loss/len(dataloader):.6f}, Test Loss: {full_test_loss/len(test_dataloader):.6f}")
+        print(f"Epoch: {epoch}, Train Loss: {full_loss/len(dataloader):.6f}, JAC misfit: {jac_misfit/len(dataloader)}, Test Loss: {full_test_loss/len(test_dataloader):.6f}")
+        
+        if full_test_loss < lowest_loss:
+            print("saved lowest loss model")
+            lowest_loss = full_test_loss
+            torch.save(model.state_dict(), f"../test_result/best_model_FNO_Heat_{loss_type}.pth")
         
         if full_loss < args.threshold:
             print("Stopping early as the loss is below the threshold.")
@@ -254,7 +316,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
     print("Finished Computing")
 
     # Save the model
-    torch.save(model.state_dict(), f"../test_result/best_model_FNO_Heat_{loss_type}.pth")
+    torch.save(model.state_dict(), f"../test_result/best_model_FNO_Heat_full epoch_{loss_type}.pth")
 
     print("Creating plot...")
     plt.rcParams.update({'font.size': 14})
@@ -301,16 +363,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=1000)
-    parser.add_argument("--num_train", type=int, default=200)
-    parser.add_argument("--num_test", type=int, default=200)
+    parser.add_argument("--num_epoch", type=int, default=500)
+    parser.add_argument("--num_train", type=int, default=400)
+    parser.add_argument("--num_test", type=int, default=80)
     parser.add_argument("--threshold", type=float, default=1e-5)
     parser.add_argument("--batch_size", type=int, default=100)
     parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC"])
     parser.add_argument("--nx", type=int, default=50)
     parser.add_argument("--ny", type=int, default=50)
     parser.add_argument("--noise", type=float, default=0.01)
-    parser.add_argument("--reg_param", type=float, default=0.9)
+    parser.add_argument("--reg_param", type=float, default=2.0)
+    parser.add_argument("--num_sample", type=int, default=100)
 
     args = parser.parse_args()
 
@@ -328,56 +391,6 @@ if __name__ == "__main__":
     # train_dataset = HeatDataset(dataset[:args.num_train])
     # test_dataset = HeatDataset(dataset[args.num_train:])
 
-
-    def save_dataset_to_csv(dataset, prefix):
-        k_data = []
-        T_data = []
-        
-        for k, T in dataset:
-            k_data.append(k.flatten().tolist())
-            T_data.append(T.flatten().tolist())
-        
-        k_df = pd.DataFrame(k_data)
-        T_df = pd.DataFrame(T_data)
-        
-        k_df.to_csv(f'{prefix}_k.csv', index=False)
-        T_df.to_csv(f'{prefix}_T.csv', index=False)
-        
-        print(f"Saved {prefix} dataset to CSV files")
-    
-    def load_dataset_from_csv(prefix, nx, ny):
-        k_df = pd.read_csv(f'{prefix}_k.csv')
-        T_df = pd.read_csv(f'{prefix}_T.csv')
-        
-        k_data = [torch.tensor(row.values).reshape(nx, ny) for _, row in k_df.iterrows()]
-        T_data = [torch.tensor(row.values).reshape(nx, ny) for _, row in T_df.iterrows()]
-        
-        return list(zip(k_data, T_data))
-
-    def log_likelihood(data, model_output, noise_std):
-        return -0.5 * torch.sum((data - model_output)**2) / (noise_std**2) - \
-           data.numel() * torch.log(torch.tensor(noise_std))
-
-    def compute_fim_for_2d_heat(solve_heat_equation, k, q, T_data, noise_std, nx=50, ny=50):
-        # Ensure k is a tensor with gradient tracking
-        k = torch.tensor(k, requires_grad=True).cuda()
-        fim = torch.zeros((nx*ny, nx*ny))
-        
-        # Add noise
-        mean = 0.0
-        std_dev = 0.1
-
-        # Generate Gaussian noise
-        noise = torch.randn(k.size()) * std_dev + mean
-        # Solve heat equation
-        T_pred = solve_heat_equation(k, q.cuda(), nx, ny) + noise.cuda()
-        ll = log_likelihood(T_data, T_pred, noise_std)
-        flat_Jacobian = torch.autograd.grad(ll, k, create_graph=True)[0].flatten() # 50 by 50 -> [2500]
-        flat_Jacobian = flat_Jacobian.reshape(1, -1)
-        fim = torch.matmul(flat_Jacobian.T, flat_Jacobian)
-
-        return fim
-
     train_dataset = HeatDataset(load_dataset_from_csv('../data/train', args.nx, args.ny))
     test_dataset = HeatDataset(load_dataset_from_csv('../data/test', args.nx, args.ny))
 
@@ -385,6 +398,15 @@ if __name__ == "__main__":
     # save_dataset_to_csv(train_dataset, '../data/train')
     # save_dataset_to_csv(test_dataset, '../data/test')
 
+    # Randomly sample indices for train and test sets
+    train_indices = np.random.choice(len(train_dataset), args.num_train, replace=False)
+    test_indices = np.random.choice(len(test_dataset), args.num_test, replace=False)
+
+    # Create subsets of the datasets
+    train_dataset = Subset(train_dataset, train_indices)
+    test_dataset = Subset(test_dataset, test_indices)
+
+    # Create DataLoaders
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
@@ -396,19 +418,18 @@ if __name__ == "__main__":
     q = torch.ones((nx, ny)) * 100  # Constant heat source term
     T_data = solve_heat_equation(k, q.cuda(), nx, ny)  # This is your ground truth data
     noise_std = 0.01  # Adjust as needed
-    num_samples = 10
 
-    fim = compute_fim_for_2d_heat(solve_heat_equation, k, q, T_data, noise_std, nx, ny)
+    fim = compute_fim_for_2d_heat(solve_heat_equation, k, q, T_data, noise_std, nx, ny).detach().cpu()
 
     # Compute FIM
-    for s in range(num_samples):
+    for s in range(args.num_sample - 1):
         print(s)
         k = torch.exp(torch.randn(nx, ny)).cuda()  # Log-normal distribution for k
-        fim += compute_fim_for_2d_heat(solve_heat_equation, k, q, T_data, noise_std, nx, ny)
-    fim /= num_samples
+        fim += compute_fim_for_2d_heat(solve_heat_equation, k, q, T_data, noise_std, nx, ny).detach().cpu()
+    fim /= args.num_sample
 
     # Analyze the FIM
-    eigenvalues, eigenvec = torch.linalg.eigh(fim)
+    eigenvalues, eigenvec = torch.linalg.eigh(fim.cuda())
     # print("shape", eigenvalues.shape, eigenvec.shape) -> torch.Size([2500]) torch.Size([2500, 2500])
     # Get the eigenvector corresponding to the largest eigenvalue
     idx = torch.argmax(eigenvalues)
@@ -420,6 +441,7 @@ if __name__ == "__main__":
     print("Eigenvector shape", largest_eigenvector.shape)
     print("eigenvalue: ", eigenvalues)
     print("eigenvector: ", eigenvec)
+
 
 
     # train
