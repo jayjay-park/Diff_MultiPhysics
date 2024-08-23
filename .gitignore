@@ -3,3 +3,6 @@ test_result/best_model_FNO_Heat_MSE.pth
 test_result/best_model_FNO_Heat_JAC.pth
 *.pth
 *.tar.gz
+torch-cfd/
+JAXFLUIDS/
+data/lettuce/

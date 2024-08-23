@@ -12,14 +12,15 @@ print(f"Using device: {device}")
 # Simulation function (same as before)
 def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
     dx = dy = 1.0 / (nx - 1)
-    T = torch.zeros((nx, ny), device=device)
+    T = torch.zeros((nx, ny), device=k.device)  # Initialize with boundary temperature
+    T[0, :] = T[-1, :] = T[:, 0] = T[:, -1] = 0
     
     for _ in range(num_iterations):
         T_old = T.clone()
         T[1:-1, 1:-1] = (
             k[1:-1, 1:-1] * (T_old[2:, 1:-1] / k[2:, 1:-1] + T_old[:-2, 1:-1] / k[:-2, 1:-1] + 
                              T_old[1:-1, 2:] / k[1:-1, 2:] + T_old[1:-1, :-2] / k[1:-1, :-2])
-            - dx * dy * q[1:-1, 1:-1]
+            + dx * dy * q[1:-1, 1:-1]  # Changed sign to positive
         ) / (k[1:-1, 1:-1] * (1/k[2:, 1:-1] + 1/k[:-2, 1:-1] + 1/k[1:-1, 2:] + 1/k[1:-1, :-2]))
         
         # Boundary conditions (Dirichlet)
@@ -29,8 +30,8 @@ def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
 
 # Generate synthetic data
 nx, ny = 50, 50
-true_k = torch.exp(torch.randn(nx, ny, device=device))
-q = torch.ones((nx, ny), device=device) * 100
+q = torch.randn(nx, ny, device=device)
+true_k = torch.ones((nx, ny), device=device)
 true_T = solve_heat_equation(true_k, q)
 # trainedFNO = FNO(
 #                 in_channels=1,
@@ -56,7 +57,7 @@ trainedFNO.load_state_dict(torch.load(FNO_path))
 trainedFNO.eval()
 # true_T = solve_heat_equation(true_k, q)
 print("shape", true_k.unsqueeze(dim=0).unsqueeze(dim=1).float().cuda().shape)
-pred_T = trainedFNO(true_k.unsqueeze(dim=0).unsqueeze(dim=1).float().cuda()).squeeze()
+pred_T = trainedFNO(q.unsqueeze(dim=0).unsqueeze(dim=1).float().cuda()).squeeze()
 
 # Add noise to create observed data
 noise_std = 0.1
@@ -66,10 +67,11 @@ noise_std = 0.1
 def model(observed=None):
     # Prior for log(k)
     log_k = pyro.sample("log_k", dist.Normal(torch.zeros(nx, ny, device=device), torch.ones(nx, ny, device=device)).to_event(2))
-    k = torch.exp(log_k)
+    q = log_k
+    # k = torch.exp(log_k)
     
     # Forward model
-    T = solve_heat_equation(k, q)
+    T = solve_heat_equation(true_k, q)
     
     # Likelihood
     pyro.sample("obs", dist.Normal(T, noise_std * torch.ones_like(T)).to_event(2), obs=observed)
@@ -99,18 +101,18 @@ for i in range(num_iterations):
 
 # Get the inferred k
 inferred_log_k_loc = pyro.param("log_k_loc").detach()
-inferred_k = torch.exp(inferred_log_k_loc)
+inferred_k = inferred_log_k_loc
 
 # Plot results
 fig, axes = plt.subplots(2, 2, figsize=(12, 12))
 plt.rcParams.update({'font.size': 14})
 
-im0 = axes[0, 0].imshow(true_k.cpu().numpy(), cmap='viridis')
-axes[0, 0].set_title("True Thermal Conductivity (k)")
+im0 = axes[0, 0].imshow(q.cpu().numpy(), cmap='inferno')
+axes[0, 0].set_title(r"Heat Source $q$")
 fig.colorbar(im0, ax=axes[0, 0], fraction=0.045, pad=0.06)
 
-im1 = axes[0, 1].imshow(inferred_k.cpu().numpy(), cmap='viridis')
-axes[0, 1].set_title("Inferred Thermal Conductivity (k)")
+im1 = axes[0, 1].imshow(inferred_k.cpu().numpy(), cmap='inferno')
+axes[0, 1].set_title(r"Inferred Heat Source $q$")
 fig.colorbar(im1, ax=axes[0, 1], fraction=0.045, pad=0.06)
 
 im2 = axes[1, 0].imshow(true_T.detach().cpu().numpy(), cmap='viridis')
