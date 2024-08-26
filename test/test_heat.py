@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.autograd.functional as F
 import torch.optim as optim
 import datetime
+import time
 import numpy as np
 import argparse
 import json
@@ -37,23 +38,6 @@ class Timer:
         return False
 
 ### Heat Equation ###
-# def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
-#     dx = dy = 1.0 / (nx - 1)
-#     T = torch.zeros((nx, ny))
-    
-#     for _ in range(num_iterations):
-#         T_old = T.clone()
-#         T[1:-1, 1:-1] = (
-#             k[1:-1, 1:-1] * (T_old[2:, 1:-1] / k[2:, 1:-1] + T_old[:-2, 1:-1] / k[:-2, 1:-1] + 
-#                              T_old[1:-1, 2:] / k[1:-1, 2:] + T_old[1:-1, :-2] / k[1:-1, :-2])
-#             - dx * dy * q[1:-1, 1:-1]
-#         ) / (k[1:-1, 1:-1] * (1/k[2:, 1:-1] + 1/k[:-2, 1:-1] + 1/k[1:-1, 2:] + 1/k[1:-1, :-2]))
-        
-#         # Boundary conditions (Dirichlet)
-#         T[0, :] = T[-1, :] = T[:, 0] = T[:, -1] = 0
-    
-#     return T
-
 def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
     dx = dy = 1.0 / (nx - 1)
     T = torch.zeros((nx, ny), device=k.device)  # Initialize with boundary temperature
@@ -73,14 +57,24 @@ def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
     return T
 
 ### Dataset ###
-def create_q_function(nx, ny, noise_level=0.1):
+def create_q_function(nx, ny, noise_level=0.1, pattern='sinusoidal', freq_mean=5., freq_std=1.):
     # Create a grid of x and y coordinates
     x = torch.linspace(0, 1, nx)
     y = torch.linspace(0, 1, ny)
     X, Y = torch.meshgrid(x, y, indexing='ij')
     
-    # Define q(x, y) as per the given function
-    q = 3000 * (torch.sin(5*X) * torch.sin(3*Y) + torch.cos(5*Y) * torch.cos(2*X))
+    # Different patterns for q(x, y)
+    if pattern == 'sinusoidal':
+        # Sample frequencies from a Gaussian distribution
+        freq_x = torch.normal(mean=torch.tensor(freq_mean), std=torch.tensor(freq_std))
+        freq_y = torch.normal(mean=torch.tensor(freq_mean - 2), std=torch.tensor(freq_std))
+        q = 3000 * (torch.sin(freq_x * X) * torch.sin(freq_y * Y) + torch.cos(freq_x * Y) * torch.cos((freq_y-1) * X))
+    elif pattern == 'gaussian':
+        q = 3000 * torch.exp(-((X-0.5)**2 + (Y-0.5)**2) / (2 * 0.1**2))
+    elif pattern == 'random_noise':
+        q = 3000 * torch.randn(nx, ny)
+    else:
+        raise ValueError("Unknown pattern type")
     
     # Add noise
     noise = noise_level * torch.randn_like(q)
@@ -88,32 +82,57 @@ def create_q_function(nx, ny, noise_level=0.1):
     
     return q_noisy
 
-def generate_dataset(num_samples, nx=50, ny=50):
+def create_q_function_inference(nx, ny, fx_mean, fy_mean, noise_level=0.1, pattern='sinusoidal', freq_std=1.):
+    # Create a grid of x and y coordinates
+    x = torch.linspace(0, 1, nx)
+    y = torch.linspace(0, 1, ny)
+    X, Y = torch.meshgrid(x, y, indexing='ij')
+    
+    # Different patterns for q(x, y)
+    if pattern == 'sinusoidal':
+        # Sample frequencies from a Gaussian distribution
+        freq_x = torch.normal(mean=torch.tensor(fx_mean), std=torch.tensor(freq_std))
+        freq_y = torch.normal(mean=torch.tensor(fy_mean), std=torch.tensor(freq_std))
+        q = 3000 * (torch.sin(freq_x * X) * torch.sin(freq_y * Y) + torch.cos(freq_x * Y) * torch.cos((freq_y-1) * X))
+    elif pattern == 'gaussian':
+        q = 3000 * torch.exp(-((X-0.5)**2 + (Y-0.5)**2) / (2 * 0.1**2))
+    elif pattern == 'random_noise':
+        q = 3000 * torch.randn(nx, ny)
+    else:
+        raise ValueError("Unknown pattern type")
+    
+    # Add noise
+    noise = noise_level * torch.randn_like(q)
+    q_noisy = q + noise
+    
+    return q_noisy
+
+def generate_dataset(num_samples, nx=50, ny=50, pattern='sinusoidal'):
     input = []
     output = []
     for s in range(num_samples):
         print(s)
-        # Log-normal distribution for k (common in heat transfer problems)
-        # k = torch.exp(torch.randn(nx, ny, device=device))
+        
+        # constant k
         k = torch.ones(nx, ny)
-        # 1. constant heat source
-        # q = torch.ones(nx, ny) * 7000
-        # 2. q(x, y)=3000 (sin(5x) sin(3y) + cos(5y)cos(2x))
-        # q = create_q_function(nx, ny, noise_level=0.5)
-        # 3. normal
-        q = torch.randn(nx, ny)
-        T = solve_heat_equation(k, q)
-        # dataset.append([q, T])
+        # Generate q with the selected pattern
+        q = create_q_function(nx, ny, noise_level=0.1, pattern=pattern)
+        # Solve the heat equation
+        T = solve_heat_equation(k, q, nx, ny)
+        
         input.append(q)
         output.append(T)
+        
         if s == 0:
-            plot_path = f"../plot/Heat_plot/Heat_q_3.png"
+            plot_path = f"../plot/Heat_plot/Heat_q_{pattern}.png"
             plot_data(k, q, T, plot_path)
         elif s == 1:
-            plot_path = f"../plot/Heat_plot/Heat_q_3(1).png"
+            plot_path = f"../plot/Heat_plot/Heat_q_{pattern}(1).png"
             plot_data(k, q, T, plot_path)
 
     return input, output
+
+
 
 class HeatDataset(torch.utils.data.Dataset):
     def __init__(self, data):
@@ -258,7 +277,6 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
     ### Gradient-matching ###
     if args.loss_type == "JAC":
         csv_filename = f'../data/true_j_{nx}_{ny}_{args.num_train}.csv'
-        # csv_filename = f'../data/true_j_{nx}_{ny}_200.csv'
         if os.path.exists(csv_filename):
             # Load True_j
             True_j_flat = pd.read_csv(csv_filename).values
@@ -267,9 +285,8 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
             print(f"Data loaded from {csv_filename}")
         else:
             True_j = torch.zeros(len(dataloader), dataloader.batch_size, nx, ny)
-            # q = torch.ones((nx, ny)) * 100 
             k = torch.ones(nx, ny)
-            f = lambda x: solve_heat_equation(k.cuda(), x)
+            f = lambda x: solve_heat_equation(k.cuda(), x, nx, ny)
             # Iterate over the DataLoader
             for batch_idx, (batch_data, batch_labels) in enumerate(dataloader):
                 for i in range(batch_data.shape[0]):  # Iterate over each sample in the batch
@@ -291,13 +308,12 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
         
 
     ### Training Loop ###
-    elapsed_time_train = []
-    mse_diff = []
-    lowest_loss = 10000000
+    elapsed_time_train, mse_diff, jac_diff_list, test_diff = [], [], [], []
+    lowest_loss = float('inf')
 
     print("Beginning training")
     for epoch in range(args.num_epoch):
-        # start_time = time.time()
+        start_time = time.time()
         full_loss, full_test_loss, jac_misfit = 0.0, 0.0, 0.0
         idx = 0
         
@@ -307,7 +323,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
             # MSE 
             optimizer.zero_grad()
             output = model(k)
-            loss = criterion(output.squeeze(), T) #/ torch.norm(T)
+            loss = criterion(output.squeeze(), T) / torch.norm(T)
 
             # GM
             if args.loss_type == "JAC":
@@ -324,7 +340,13 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
             full_loss += loss.item()
             idx += 1
         
+        # Save loss
         mse_diff.append(full_loss)
+        if args.loss_type == "JAC":
+            jac_diff_list.append(jac_misfit)
+        # Save time
+        end_time = time.time()  
+        elapsed_time_train.append(end_time - start_time)
         
         # Validation
         model.eval()
@@ -332,12 +354,14 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
             for k, T in test_dataloader:
                 k, T = k.to(device).float(), T.to(device).float()
                 output = model(k.unsqueeze(dim=1))
-                test_loss = criterion(output.squeeze(), T)
+                test_loss = criterion(output.squeeze(), T) / torch.norm(T)
                 full_test_loss += test_loss.item()
+            test_diff.append(full_test_loss)
         model.train()
         
         print(f"Epoch: {epoch}, Train Loss: {full_loss:.6f}, JAC misfit: {jac_misfit}, Test Loss: {full_test_loss:.6f}")
-        
+        if epoch % 50 == 0:
+            torch.save(model.state_dict(), f"../test_result/Checkpoint/FNO_Heat_{loss_type}_{args.nx}_{args.num_train}_{epoch}.pth")
         if full_test_loss < lowest_loss:
             print("saved lowest loss model")
             lowest_loss = full_test_loss
@@ -358,6 +382,25 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
 
     # Save the model
     torch.save(model.state_dict(), f"../test_result/best_model_FNO_Heat_full epoch_{loss_type}.pth")
+    # Save the elapsed times
+    with open(f'../test_result/Time/FNO_HEAT_{args.loss_type}_{args.nx}_{args.num_train}.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Epoch', 'Elapsed Time (seconds)'])
+        for epoch, elapsed_time in enumerate(elapsed_time_train, 1):
+            writer.writerow([epoch, elapsed_time])
+    # Save the losses
+    loss_data = [
+        (mse_diff, 'mse_loss'),
+        (jac_diff_list, 'jac_loss') if args.loss_type == "JAC" else (None, None),
+        (test_diff, 'test_loss')
+    ]
+    for data, name in loss_data:
+        if data:
+            with open(f'../test_result/Losses/{name}_{args.loss_type}_{args.nx}_{args.num_train}.csv', 'w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(['Epoch', 'Loss'])
+                writer.writerows(enumerate(data, 1))
+    print("Losses saved to CSV files.")
 
     print("Creating plot...")
     plt.rcParams.update({'font.size': 14})
@@ -368,12 +411,18 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
     plot_path = f"../plot/Heat_plot/FNO_Heat_{loss_type}.png"
     plot_results(k[0], T[0], T_pred[0], plot_path)
 
+    # Create loss plot
     print("Create loss plot")
     mse_diff = np.asarray(mse_diff)
+    jac_diff_list = np.asarray(jac_diff_list)
+    test_diff = np.asarray(test_diff)
     path = f"../plot/Loss/FNO_Heat_{loss_type}.png"
 
     fig, ax = plt.subplots()
-    ax.plot(mse_diff, "P-", lw=2.0, ms=5.0, label="MSE")
+    ax.plot(mse_diff, "P-", lw=2.0, ms=6.0, color="coral", label="MSE (Train)")
+    ax.plot(test_diff, "P-", lw=2.0, ms=6.0, color="indianred", label="MSE (Test)")
+    if args.loss_type == "JAC":
+        ax.plot(jac_diff_list, "P-", lw=2.0, color="slateblue", ms=6.0, label=r"$\|J^Tv - \hat{J}^Tv\|$")
     ax.set_xlabel("Epochs",fontsize=24)
     ax.xaxis.set_tick_params(labelsize=24)
     ax.yaxis.set_tick_params(labelsize=24)
@@ -400,14 +449,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=500)
+    parser.add_argument("--num_epoch", type=int, default=300)
     parser.add_argument("--num_train", type=int, default=1000)
     parser.add_argument("--num_test", type=int, default=600)
     parser.add_argument("--threshold", type=float, default=1e-8)
     parser.add_argument("--batch_size", type=int, default=200)
-    parser.add_argument("--loss_type", default="MSE", choices=["MSE", "JAC"])
-    parser.add_argument("--nx", type=int, default=50)
-    parser.add_argument("--ny", type=int, default=50)
+    parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC"])
+    parser.add_argument("--nx", type=int, default=60)
+    parser.add_argument("--ny", type=int, default=60)
     parser.add_argument("--noise", type=float, default=0.01)
     parser.add_argument("--reg_param", type=float, default=20.0)
     parser.add_argument("--num_sample", type=int, default=1000)
@@ -422,6 +471,7 @@ if __name__ == "__main__":
         logger.info("%s: %s", arg, value)
 
     # Generate Training/Test Data
+    # nx, ny = 60 is sinusoidal data
     trainx_file = f'../data/train_x_{args.nx}_{args.ny}_{args.num_train}.csv'
     trainy_file = f'../data/train_y_{args.nx}_{args.ny}_{args.num_train}.csv'
     testx_file = f'../data/test_x_{args.nx}_{args.ny}_{args.num_test}.csv'
@@ -466,13 +516,9 @@ if __name__ == "__main__":
 
     # compute FIM eigenvector
     if args.loss_type == "JAC":
-        nx, ny = 50, 50
+        nx, ny = args.nx, args.ny
         noise_std = 0.01  # Adjust as needed
-        # train = [torch.stack(data) for data in train_x]  # Assuming `data` can be converted to a tensor
-        # train = torch.stack(train)
         print("Reloaded train: ", train_x[0].shape)
-
-
         fim = compute_fim_for_2d_heat(solve_heat_equation, train_x[0].cuda(), train_y[0].cuda(), noise_std, nx, ny).detach().cpu()
         # Compute FIM
         for s in range(args.num_sample - 1):
@@ -508,7 +554,7 @@ if __name__ == "__main__":
 
         # idx = torch.argmax(eigenvalues)
         # largest_eigenvector = eigenvec[:, idx]
-        largest_eigenvector = largest_eigenvector.reshape(nx, ny)
+        largest_eigenvector = largest_eigenvector.reshape(args.nx, args.ny)
 
         print("Largest Eigenvalue and index:", eigenvalues[idx], idx)
         print("Corresponding Eigenvector:", largest_eigenvector)

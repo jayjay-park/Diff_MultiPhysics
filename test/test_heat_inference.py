@@ -9,7 +9,7 @@ from modulus.models.fno import FNO
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# Simulation function (same as before)
+# Simulation function (unchanged)
 def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
     dx = dy = 1.0 / (nx - 1)
     T = torch.zeros((nx, ny), device=k.device)  # Initialize with boundary temperature
@@ -30,62 +30,53 @@ def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
 
 # Generate synthetic data
 nx, ny = 50, 50
-q = torch.randn(nx, ny, device=device)
+true_q = torch.randn(nx, ny, device=device)
 true_k = torch.ones((nx, ny), device=device)
-true_T = solve_heat_equation(true_k, q)
-# trainedFNO = FNO(
-#                 in_channels=1,
-#                 out_channels=1,
-#                 num_fno_modes=21,
-#                 padding=3,
-#                 dimension=2,
-#                 latent_channels=128
-#                 ).to('cuda')
+true_T = solve_heat_equation(true_k, true_q)
+
+# Load trained FNO
 trainedFNO = FNO(
-        in_channels=1,
-        out_channels=1,
-        decoder_layer_size=128,
-        num_fno_layers=6,
-        num_fno_modes=24,
-        padding=3,
-        dimension=2,
-        latent_channels=64
-    ).to('cuda')
+    in_channels=1,
+    out_channels=1,
+    decoder_layer_size=128,
+    num_fno_layers=6,
+    num_fno_modes=24,
+    padding=3,
+    dimension=2,
+    latent_channels=64
+).to(device)
+
 loss_type = "JAC"
-FNO_path = "../test_result/best_model_FNO_Heat_"+str(loss_type)+".pth"
+FNO_path = f"../test_result/best_model_FNO_Heat_full epoch_{loss_type}_{nx}.pth"
 trainedFNO.load_state_dict(torch.load(FNO_path))
 trainedFNO.eval()
-# true_T = solve_heat_equation(true_k, q)
-print("shape", true_k.unsqueeze(dim=0).unsqueeze(dim=1).float().cuda().shape)
-pred_T = trainedFNO(q.unsqueeze(dim=0).unsqueeze(dim=1).float().cuda()).squeeze()
+
+# Generate predicted temperature using FNO
+pred_T = trainedFNO(true_q.unsqueeze(dim=0).unsqueeze(dim=1).float()).squeeze()
 
 # Add noise to create observed data
-noise_std = 0.1
-# observed_T = true_T + noise_std * torch.randn_like(true_T)
+noise_std = 0.001
+observed_T = pred_T + noise_std * torch.randn_like(pred_T)
 
 # Pyro model: probabilistic model
 def model(observed=None):
-    # Prior for log(k)
-    log_k = pyro.sample("log_k", dist.Normal(torch.zeros(nx, ny, device=device), torch.ones(nx, ny, device=device)).to_event(2))
-    q = log_k
-    # k = torch.exp(log_k)
+    # Prior for q
+    q = pyro.sample("q", dist.Normal(torch.zeros(nx, ny, device=device), torch.ones(nx, ny, device=device)).to_event(2))
     
-    # Forward model
-    T = solve_heat_equation(true_k, q)
+    # Forward model using FNO
+    T = trainedFNO(q.unsqueeze(dim=0).unsqueeze(dim=1).float()).squeeze()
     
     # Likelihood
     pyro.sample("obs", dist.Normal(T, noise_std * torch.ones_like(T)).to_event(2), obs=observed)
     
     return T
 
-# call neural network model and generate data.
-
 # Pyro guide (variational distribution)
 def guide(observed=None):
-    loc = pyro.param("log_k_loc", torch.zeros(nx, ny, device=device))
-    scale = pyro.param("log_k_scale", torch.ones(nx, ny, device=device),
+    q_loc = pyro.param("q_loc", torch.zeros(nx, ny, device=device))
+    q_scale = pyro.param("q_scale", torch.ones(nx, ny, device=device),
                        constraint=dist.constraints.positive)
-    return pyro.sample("log_k", dist.Normal(loc, scale).to_event(2))
+    return pyro.sample("q", dist.Normal(q_loc, q_scale).to_event(2))
 
 # Set up the variational inference
 pyro.clear_param_store()
@@ -93,35 +84,71 @@ adam = pyro.optim.Adam({"lr": 0.01})
 svi = SVI(model, guide, adam, loss=Trace_ELBO(retain_graph=True))
 
 # Run inference
-num_iterations = 1000
+num_iterations = 10000
 for i in range(num_iterations):
-    loss = svi.step(pred_T)
+    loss = svi.step(observed_T)
     if (i+1) % 100 == 0:
         print(f"Iteration {i+1}/{num_iterations} - Loss: {loss}")
 
-# Get the inferred k
-inferred_log_k_loc = pyro.param("log_k_loc").detach()
-inferred_k = inferred_log_k_loc
+# Generate multiple samples from the posterior
+num_samples = 5000
+posterior_samples = []
+for _ in range(num_samples):
+    sample = guide(observed_T)
+    posterior_samples.append(sample)
 
-# Plot results
-fig, axes = plt.subplots(2, 2, figsize=(12, 12))
+posterior_samples = torch.stack(posterior_samples)
+
+# Get the inferred q
+inferred_q_loc = pyro.param("q_loc").detach()
+inferred_q = inferred_q_loc
+
+# Compute mean and standard deviation
+q_mean = posterior_samples.mean(dim=0)
+q_std = posterior_samples.std(dim=0)
+
+# Compute 95% credible interval
+q_lower, q_upper = torch.quantile(posterior_samples, torch.tensor([0.025, 0.975]).cuda(), dim=0)
+
+fig, axes = plt.subplots(2, 2, figsize=(16, 16))
 plt.rcParams.update({'font.size': 14})
 
-im0 = axes[0, 0].imshow(q.cpu().numpy(), cmap='inferno')
-axes[0, 0].set_title(r"Heat Source $q$")
+# True q
+im0 = axes[0, 0].imshow(true_q.cpu().numpy(), cmap='inferno')
+axes[0, 0].set_title(r"True Heat Source $q$")
 fig.colorbar(im0, ax=axes[0, 0], fraction=0.045, pad=0.06)
 
-im1 = axes[0, 1].imshow(inferred_k.cpu().numpy(), cmap='inferno')
-axes[0, 1].set_title(r"Inferred Heat Source $q$")
+# Inferred q (mean)
+im1 = axes[0, 1].imshow(q_mean.detach().cpu().numpy(), cmap='inferno')
+axes[0, 1].set_title(r"Inferred Heat Source $q$ (Mean)")
 fig.colorbar(im1, ax=axes[0, 1], fraction=0.045, pad=0.06)
 
-im2 = axes[1, 0].imshow(true_T.detach().cpu().numpy(), cmap='viridis')
-axes[1, 0].set_title("True Temperature (T)")
+# Uncertainty (standard deviation)
+im2 = axes[1, 0].imshow(q_std.cpu().detach().numpy(), cmap='viridis')
+axes[1, 0].set_title(r"Uncertainty in $q$ (Std Dev)")
 fig.colorbar(im2, ax=axes[1, 0], fraction=0.045, pad=0.06)
 
-im3 = axes[1, 1].imshow(pred_T.detach().cpu().numpy(), cmap='viridis')
-axes[1, 1].set_title("Predicted Temperature (T)")
+# Error (difference between true and inferred)
+error = (true_q - q_mean).abs()
+im3 = axes[1, 1].imshow(error.detach().cpu().numpy(), cmap='viridis')
+axes[1, 1].set_title("Absolute Error in $q$")
 fig.colorbar(im3, ax=axes[1, 1], fraction=0.045, pad=0.06)
 
 plt.tight_layout()
-plt.savefig(f"../test_result/Heat_"+str(loss_type)+".png")
+plt.savefig(f"../test_result/Heat_{loss_type}_posterior.png")
+
+# Plot a slice with credible interval
+slice_idx = nx // 2
+plt.figure(figsize=(12, 6))
+x = torch.arange(ny)
+plt.fill_between(x.cpu().numpy(), 
+                 q_lower[slice_idx].detach().cpu().numpy(), 
+                 q_upper[slice_idx].detach().cpu().numpy(), 
+                 alpha=0.3, label='95% CI')
+plt.plot(x.cpu().numpy(), q_mean[slice_idx].detach().cpu().numpy(), label='Mean', color='r')
+plt.plot(x.cpu().numpy(), true_q[slice_idx].detach().cpu().numpy(), label='True', color='k', linestyle='--')
+plt.title(f'Slice of q at y = {slice_idx}')
+plt.xlabel('x')
+plt.ylabel('q')
+plt.legend()
+plt.savefig(f"../test_result/Heat_{loss_type}_slice.png")

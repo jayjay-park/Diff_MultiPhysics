@@ -6,3 +6,11 @@ test_result/best_model_FNO_Heat_JAC.pth
 torch-cfd/
 JAXFLUIDS/
 data/lettuce/
+data/true_k_50_50_5000.csv
+data/train_y_100_100_1000.csv
+data/true_j_100_100_1000.csv
+data/test_x_100_100_600.csv
+data/test_y_100_100_600.csv
+data/train_x_100_100_1000.csv
+data/train_y_60_60_1000.csv
+data/train_x_60_60_1000.csv
