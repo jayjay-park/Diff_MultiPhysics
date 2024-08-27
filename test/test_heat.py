@@ -38,23 +38,142 @@ class Timer:
         return False
 
 ### Heat Equation ###
+# def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
+#     dx = dy = 1.0 / (nx - 1)
+#     T = torch.zeros((nx, ny), device=k.device)  # Initialize with boundary temperature
+#     T[0, :] = T[-1, :] = T[:, 0] = T[:, -1] = 0
+#     k = k * 0.1
+    
+#     for _ in range(num_iterations):
+#         T_old = T.clone()
+#         T[1:-1, 1:-1] = (
+#             k[1:-1, 1:-1] * (T_old[2:, 1:-1] / k[2:, 1:-1] + T_old[:-2, 1:-1] / k[:-2, 1:-1] + 
+#                              T_old[1:-1, 2:] / k[1:-1, 2:] + T_old[1:-1, :-2] / k[1:-1, :-2])
+#             + dx * dy * q[1:-1, 1:-1]  # Changed sign to positive
+#         ) / (k[1:-1, 1:-1] * (1/k[2:, 1:-1] + 1/k[:-2, 1:-1] + 1/k[1:-1, 2:] + 1/k[1:-1, :-2]))
+        
+#         # Boundary conditions (Dirichlet)
+#         T[0, :] = T[-1, :] = T[:, 0] = T[:, -1] = 0
+    
+#     return T
+
+
+# def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
+#     dx = dy = 1.0 / (nx - 1)
+#     T = torch.zeros((nx, ny), device=k.device)  # Initialize temperature with boundary temperature
+#     # Boundary conditions (Dirichlet)
+#     T[0, :] = 100  # Left boundary
+#     T[-1, :] = 200  # Right boundary
+#     T[:, 0] = 150  # Bottom boundary
+#     T[:, -1] = 250  # Top boundary
+    
+#     # Modify k to introduce stiffness
+#     k[:nx//2, :ny//2] = 1.0  # Low conductivity in the bottom-left quadrant
+#     k[nx//2:, ny//2:] = 1000.0  # High conductivity in the top-right quadrant
+    
+#     for _ in range(num_iterations):
+#         T_old = T.clone()
+#         T[1:-1, 1:-1] = (
+#             k[1:-1, 1:-1] * (
+#                 T_old[2:, 1:-1] / k[2:, 1:-1] + 
+#                 T_old[:-2, 1:-1] / k[:-2, 1:-1] + 
+#                 T_old[1:-1, 2:] / k[1:-1, 2:] + 
+#                 T_old[1:-1, :-2] / k[1:-1, :-2]
+#             )
+#             + dx * dy * q[1:-1, 1:-1]
+#         ) / (
+#             k[1:-1, 1:-1] * (
+#                 1/k[2:, 1:-1] + 1/k[:-2, 1:-1] + 
+#                 1/k[1:-1, 2:] + 1/k[1:-1, :-2]
+#             )
+#         )
+
+#     return T
+
 def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
     dx = dy = 1.0 / (nx - 1)
-    T = torch.zeros((nx, ny), device=k.device)  # Initialize with boundary temperature
-    T[0, :] = T[-1, :] = T[:, 0] = T[:, -1] = 0
+    T = torch.zeros((nx, ny), device=k.device)  # Initialize temperature with boundary temperature
+    # Boundary conditions (Dirichlet)
+    T[0, :] = 100  # Left boundary
+    T[-1, :] = 200  # Right boundary
+    T[:, 0] = 150  # Bottom boundary
+    T[:, -1] = 250  # Top boundary
+    
+    # Modify k to introduce extreme stiffness
+    k[:nx//3, :ny//3] = 0.1      # Very low conductivity in the bottom-left region
+    k[nx//3:2*nx//3, ny//3:2*ny//3] = 10.0  # Moderate conductivity in the middle region
+    k[2*nx//3:, 2*ny//3:] = 10000.0  # Extremely high conductivity in the top-right region
+    k[:nx//3, 2*ny//3:] = 0.01  # Extremely low conductivity in the top-left region
+    k[2*nx//3:, :ny//3] = 5000.0  # Very high conductivity in the bottom-right region
     
     for _ in range(num_iterations):
         T_old = T.clone()
         T[1:-1, 1:-1] = (
-            k[1:-1, 1:-1] * (T_old[2:, 1:-1] / k[2:, 1:-1] + T_old[:-2, 1:-1] / k[:-2, 1:-1] + 
-                             T_old[1:-1, 2:] / k[1:-1, 2:] + T_old[1:-1, :-2] / k[1:-1, :-2])
-            + dx * dy * q[1:-1, 1:-1]  # Changed sign to positive
-        ) / (k[1:-1, 1:-1] * (1/k[2:, 1:-1] + 1/k[:-2, 1:-1] + 1/k[1:-1, 2:] + 1/k[1:-1, :-2]))
-        
-        # Boundary conditions (Dirichlet)
-        T[0, :] = T[-1, :] = T[:, 0] = T[:, -1] = 0
-    
+            k[1:-1, 1:-1] * (
+                T_old[2:, 1:-1] / k[2:, 1:-1] + 
+                T_old[:-2, 1:-1] / k[:-2, 1:-1] + 
+                T_old[1:-1, 2:] / k[1:-1, 2:] + 
+                T_old[1:-1, :-2] / k[1:-1, :-2]
+            )
+            + dx * dy * q[1:-1, 1:-1]
+        ) / (
+            k[1:-1, 1:-1] * (
+                1/k[2:, 1:-1] + 1/k[:-2, 1:-1] + 
+                1/k[1:-1, 2:] + 1/k[1:-1, :-2]
+            )
+        )
+
     return T
+
+# def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
+#     dx = dy = 1.0 / (nx - 1)
+#     T = torch.zeros((nx, ny), device=k.device)  # Initialize temperature with boundary temperature
+#     # Boundary conditions (Dirichlet)
+#     T[0, :] = 100  # Left boundary
+#     T[-1, :] = 200  # Right boundary
+#     T[:, 0] = 150  # Bottom boundary
+#     T[:, -1] = 250  # Top boundary
+
+#     blocks = [
+#     (8, 20, 8, 20, 10000.0),   # Block 1 with high conductivity
+#     (22, 34, 10, 22, 500.0),  # Block 2 with medium-high conductivity
+#     (36, 48, 24, 36, 100.0),  # Block 3 with medium-low conductivity
+#     (44, 56, 44, 56, 1000.0),   # Block 4 with low conductivity
+#     (12, 28, 30, 46, 5000.0),   # Block 5 with different conductivity
+#     (52, 64, 20, 32, 8000.0),  # Block 6 with different conductivity
+#     (0, 8, 50, 64, 50.0),    # Block 7 with different conductivity
+#     (40, 48, 0, 8, 300.0)     # Block 8 with different conductivity
+#     ]
+
+    
+#     # Initialize conductivity with default low value
+#     k[:] = 0.01
+
+#     # Apply each block's conductivity
+#     for (x1, x2, y1, y2, k_val) in blocks:
+#         k[x1:x2, y1:y2] = k_val
+
+#     for _ in range(num_iterations):
+#         T_old = T.clone()
+#         T[1:-1, 1:-1] = (
+#             k[1:-1, 1:-1] * (
+#                 T_old[2:, 1:-1] / k[2:, 1:-1] + 
+#                 T_old[:-2, 1:-1] / k[:-2, 1:-1] + 
+#                 T_old[1:-1, 2:] / k[1:-1, 2:] + 
+#                 T_old[1:-1, :-2] / k[1:-1, :-2]
+#             )
+#             + dx * dy * q[1:-1, 1:-1]
+#         ) / (
+#             k[1:-1, 1:-1] * (
+#                 1/k[2:, 1:-1] + 1/k[:-2, 1:-1] + 
+#                 1/k[1:-1, 2:] + 1/k[1:-1, :-2]
+#             )
+#         )
+
+#     return T
+
+
+
 
 ### Dataset ###
 def create_q_function(nx, ny, noise_level=0.1, pattern='sinusoidal', freq_mean=5., freq_std=1.):
@@ -450,16 +569,17 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--num_epoch", type=int, default=300)
-    parser.add_argument("--num_train", type=int, default=1000)
-    parser.add_argument("--num_test", type=int, default=600)
+    parser.add_argument("--num_train", type=int, default=600)
+    parser.add_argument("--num_test", type=int, default=200)
+    parser.add_argument("--num_sample", type=int, default=600)
     parser.add_argument("--threshold", type=float, default=1e-8)
     parser.add_argument("--batch_size", type=int, default=200)
     parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC"])
-    parser.add_argument("--nx", type=int, default=60)
-    parser.add_argument("--ny", type=int, default=60)
+    parser.add_argument("--nx", type=int, default=64)
+    parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
-    parser.add_argument("--reg_param", type=float, default=20.0)
-    parser.add_argument("--num_sample", type=int, default=1000)
+    parser.add_argument("--reg_param", type=float, default=100.0)
+
     args = parser.parse_args()
 
     # Save initial settings
@@ -472,10 +592,10 @@ if __name__ == "__main__":
 
     # Generate Training/Test Data
     # nx, ny = 60 is sinusoidal data
-    trainx_file = f'../data/train_x_{args.nx}_{args.ny}_{args.num_train}.csv'
-    trainy_file = f'../data/train_y_{args.nx}_{args.ny}_{args.num_train}.csv'
-    testx_file = f'../data/test_x_{args.nx}_{args.ny}_{args.num_test}.csv'
-    testy_file = f'../data/test_y_{args.nx}_{args.ny}_{args.num_test}.csv'
+    trainx_file = f'../data/train_x_{args.nx}_{args.ny}_{args.num_train}_stiff.csv'
+    trainy_file = f'../data/train_y_{args.nx}_{args.ny}_{args.num_train}_stiff.csv'
+    testx_file = f'../data/test_x_{args.nx}_{args.ny}_{args.num_test}_stiff.csv'
+    testy_file = f'../data/test_y_{args.nx}_{args.ny}_{args.num_test}_stiff.csv'
     if os.path.exists(trainx_file):
         print("Loading Dataset")
         train_x = HeatDataset(load_dataset_from_csv(trainx_file, args.nx, args.ny))

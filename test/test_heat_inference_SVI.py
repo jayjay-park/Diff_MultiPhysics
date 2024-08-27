@@ -32,7 +32,7 @@ trainedFNO = FNO(
     latent_channels=64
 ).to(device)
 
-loss_type = "MSE"
+loss_type = "JAC"
 if loss_type != "TRUE":
     FNO_path = f"../test_result/best_model_FNO_Heat_{loss_type}.pth"
     trainedFNO.load_state_dict(torch.load(FNO_path))
@@ -66,9 +66,9 @@ def model(observed=None):
 # Pyro guide: variational distribution
 def guide(observed=None):
     freq_x_loc = pyro.param("freq_x_loc", torch.tensor(5.0, device=device))
-    freq_x_scale = pyro.param("freq_x_scale", torch.tensor(0.1, device=device), constraint=dist.constraints.positive)
+    freq_x_scale = pyro.param("freq_x_scale", torch.tensor(1., device=device), constraint=dist.constraints.positive)
     freq_y_loc = pyro.param("freq_y_loc", torch.tensor(3.0, device=device))
-    freq_y_scale = pyro.param("freq_y_scale", torch.tensor(0.1, device=device), constraint=dist.constraints.positive)
+    freq_y_scale = pyro.param("freq_y_scale", torch.tensor(1., device=device), constraint=dist.constraints.positive)
 
     pyro.sample("freq_x", dist.Normal(freq_x_loc, freq_x_scale))
     pyro.sample("freq_y", dist.Normal(freq_y_loc, freq_y_scale))
@@ -95,14 +95,27 @@ print(f"Estimated freq_y: Mean = {freq_y_loc}, Std = {freq_y_scale}")
 # JAC
 # Estimated freq_x: Mean = 4.99452018737793, Std = 0.017078550532460213
 # Estimated freq_y: Mean = 3.0442113876342773, Std = 0.019067300483584404
+# Stiff (600 training data)
+# Estimated freq_x: Mean = 4.107088565826416, Std = 0.028546450659632683
+# Estimated freq_y: Mean = 2.643915891647339, Std = 0.024336788803339005
 
 # True
 # Estimated freq_x: Mean = 4.996736526489258, Std = 0.017203284427523613
 # Estimated freq_y: Mean = 2.9999308586120605, Std = 0.015644129365682602
+# Stiff
+# Estimated freq_x: Mean = 5.007697582244873, Std = 0.014010228216648102
+# Estimated freq_y: Mean = 3.0004279613494873, Std = 0.01581578701734543
+
 
 # MSE
 # Estimated freq_x: Mean = 4.97986364364624, Std = 0.016950080171227455
 # Estimated freq_y: Mean = 3.141986131668091, Std = 0.01716192439198494
+# Stiff (100 training data)
+# Estimated freq_x: Mean = 3.8380191326141357, Std = 0.034099020063877106
+# Estimated freq_y: Mean = 2.4467694759368896, Std = 0.027377523481845856
+# Stiff (600 trainig data)
+# Estimated freq_x: Mean = 4.073402404785156, Std = 0.028732210397720337
+# Estimated freq_y: Mean = 2.5611820220947266, Std = 0.023386692628264427
 
 # Generate samples from the learned variational distribution
 num_samples = 10000
