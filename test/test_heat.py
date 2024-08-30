@@ -13,6 +13,7 @@ import csv
 import pandas as pd
 import math
 from torch.func import vmap, vjp
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
 import seaborn as sns
@@ -442,12 +443,14 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec):
             # MSE 
             optimizer.zero_grad()
             output = model(k)
+            print("output", output)
             loss = criterion(output.squeeze(), T) / torch.norm(T)
 
             # GM
             if args.loss_type == "JAC":
                 target = True_j[idx].cuda()
                 output, vjp_func = torch.func.vjp(model, k)
+                print("vjp", output)
                 vjp_out = vjp_func(vec_batch.unsqueeze(dim=1))[0].squeeze()
                 jac_diff = criterion(target, vjp_out)
                 jac_misfit += jac_diff.detach().cpu().numpy()
@@ -568,17 +571,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=300)
-    parser.add_argument("--num_train", type=int, default=600)
-    parser.add_argument("--num_test", type=int, default=200)
-    parser.add_argument("--num_sample", type=int, default=600)
+    parser.add_argument("--num_epoch", type=int, default=500)
+    parser.add_argument("--num_train", type=int, default=100)
+    parser.add_argument("--num_test", type=int, default=100)
+    parser.add_argument("--num_sample", type=int, default=100)
     parser.add_argument("--threshold", type=float, default=1e-8)
-    parser.add_argument("--batch_size", type=int, default=200)
+    parser.add_argument("--batch_size", type=int, default=100)
     parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC"])
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
-    parser.add_argument("--reg_param", type=float, default=100.0)
+    parser.add_argument("--reg_param", type=float, default=500.0)
 
     args = parser.parse_args()
 

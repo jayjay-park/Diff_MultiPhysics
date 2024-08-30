@@ -1,0 +1,23 @@
+## MSE ##
+
+Estimated freq_x: Mean = 3.78191, Std = 0.06091
+Estimated freq_y: Mean = 0.771055, Std = 0.331541
+Estimated phase_x: Mean = 2.44009, Std = 0.145286
+Estimated phase_y: Mean = -0.43830, Std = 0.18778
+Mean Absolute Error of Vorticity: 15.1783
+
+## True ##
+
+Estimated freq_x: Mean = 3.985535144805908, Std = 0.29098182916641235
+Estimated freq_y: Mean = 1.9356141090393066, Std = 0.461825966835022
+Estimated phase_x: Mean = -0.03559917211532593, Std = 0.9237488508224487
+Estimated phase_y: Mean = -0.025676405057311058, Std = 1.1722221374511719
+Mean Absolute Error of Vorticity: 3.9258
+
+## JAC ##
+
+Estimated freq_x: Mean = 3.7521519660949707, Std = 0.05876480042934418
+Estimated freq_y: Mean = 2.085395097732544, Std = 0.04591556265950203
+Estimated phase_x: Mean = 2.48661208152771, Std = 0.1434866338968277
+Estimated phase_y: Mean = 0.3373028337955475, Std = 0.11813565343618393
+Mean Absolute Error of Vorticity: 13.6998

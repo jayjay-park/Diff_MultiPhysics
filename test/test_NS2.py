@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 
 def simulate_NS(N=400, tEnd=1.0, dt=0.001, nu=0.001, plotRealTime=True):
     # Simulation parameters
-    N = 400
+    N = 64
     t = 0
-    tEnd = 0.8
+    tEnd = 0.7
     dt = 0.001
     tOut = 0.01
     nu = 0.001
@@ -17,9 +17,17 @@ def simulate_NS(N=400, tEnd=1.0, dt=0.001, nu=0.001, plotRealTime=True):
     xlin = torch.linspace(0, L, N, device='cuda')
     xx, yy = torch.meshgrid(xlin, xlin, indexing='ij')
 
-    # Initial Condition (vortex)
-    vx = -torch.sin(2 * torch.pi * yy)
-    vy = torch.sin(2 * torch.pi * xx * 2)
+    # # Initial Condition (vortex)
+    # Generate random parameters for the sinusoidal function
+    freq_x = torch.normal(mean=4.0, std=1, size=(1,), device='cuda').item()
+    freq_y = torch.normal(mean=2.0, std=1, size=(1,), device='cuda').item()
+    phase_x = torch.normal(mean=1.0, std=1, size=(1,), device='cuda').item()
+    phase_y = torch.normal(mean=-1.0, std=1, size=(1,), device='cuda').item()
+    print(freq_x, freq_y, phase_x, phase_y)
+
+    # Initial Condition (vortex) using sinusoidal function with random parameters
+    vx = -torch.sin(freq_y * torch.pi * yy + phase_y)
+    vy = torch.sin(freq_x * torch.pi * xx + phase_x)
 
     # Fourier Space Variables
     klin = 2.0 * torch.pi / L * torch.arange(-N//2, N//2, device='cuda')

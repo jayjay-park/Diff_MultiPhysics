@@ -179,6 +179,7 @@ def simulate(simulator, vx, vy, n_steps):
 
             plt.tight_layout()
             plt.savefig(f'velocity_fields_{s}.png', dpi=300)
+            plt.close()
 
     return vx, vy, wz_output, torch.stack(seq)
 

@@ -14,3 +14,4 @@ data/test_y_100_100_600.csv
 data/train_x_100_100_1000.csv
 data/train_y_60_60_1000.csv
 data/train_x_60_60_1000.csv
+pyadjoint/

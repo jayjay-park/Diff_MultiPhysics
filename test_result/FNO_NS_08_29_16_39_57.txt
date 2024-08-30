@@ -1,0 +1,15 @@
+lr: 0.001
+weight_decay: 0.0005
+num_epoch: 300
+num_train: 2000
+num_test: 400
+num_sample: 2000
+threshold: 1e-08
+batch_size: 100
+loss_type: MSE
+nx: 64
+ny: 64
+noise: 0.01
+reg_param: 100.0
+nu: 0.001
+dt: 0.001

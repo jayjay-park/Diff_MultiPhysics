@@ -32,7 +32,7 @@ trainedFNO = FNO(
     latent_channels=64
 ).to(device)
 
-loss_type = "JAC"
+loss_type = "TRUE"
 if loss_type != "TRUE":
     FNO_path = f"../test_result/best_model_FNO_Heat_{loss_type}.pth"
     trainedFNO.load_state_dict(torch.load(FNO_path))
@@ -98,6 +98,15 @@ print(f"Estimated freq_y: Mean = {freq_y_loc}, Std = {freq_y_scale}")
 # Stiff (600 training data)
 # Estimated freq_x: Mean = 4.107088565826416, Std = 0.028546450659632683
 # Estimated freq_y: Mean = 2.643915891647339, Std = 0.024336788803339005
+# Stiff with reg = 100. data = 200
+# Estimated freq_x: Mean = 4.203597545623779, Std = 0.10194732993841171
+# Estimated freq_y: Mean = 2.5716629028320312, Std = 0.12111334502696991
+# Stiff with reg = 1000. data = 200.
+# Estimated freq_x: Mean = 4.259883880615234, Std = 0.1028919368982315
+# Estimated freq_y: Mean = 2.5710837841033936, Std = 0.10789025574922562
+# Iteration 900/1000 : Loss = 137064356.6147781
+# Estimated freq_x: Mean = 4.226048946380615, Std = 0.10006629675626755
+# Estimated freq_y: Mean = 2.6337428092956543, Std = 0.10470596700906754
 
 # True
 # Estimated freq_x: Mean = 4.996736526489258, Std = 0.017203284427523613
@@ -105,6 +114,8 @@ print(f"Estimated freq_y: Mean = {freq_y_loc}, Std = {freq_y_scale}")
 # Stiff
 # Estimated freq_x: Mean = 5.007697582244873, Std = 0.014010228216648102
 # Estimated freq_y: Mean = 3.0004279613494873, Std = 0.01581578701734543
+# Estimated freq_x: Mean = 5.031343460083008, Std = 0.1569506824016571
+# Estimated freq_y: Mean = 3.0099539756774902, Std = 0.09223314374685287
 
 
 # MSE
@@ -116,6 +127,8 @@ print(f"Estimated freq_y: Mean = {freq_y_loc}, Std = {freq_y_scale}")
 # Stiff (600 trainig data)
 # Estimated freq_x: Mean = 4.073402404785156, Std = 0.028732210397720337
 # Estimated freq_y: Mean = 2.5611820220947266, Std = 0.023386692628264427
+# Estimated freq_x: Mean = 4.060477256774902, Std = 0.09470513463020325
+# Estimated freq_y: Mean = 2.5806186199188232, Std = 0.10584452003240585
 
 # Generate samples from the learned variational distribution
 num_samples = 10000

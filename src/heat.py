@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Simulation function
-def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
+def solve_burger_equation(k, q, nx=50, ny=50, num_iterations=1000):
     dx = dy = 1.0 / (nx - 1)
     T = torch.zeros((nx, ny), device=device)
     
@@ -28,15 +28,15 @@ def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
 def generate_dataset(num_samples, nx=50, ny=50):
     dataset = []
     for _ in range(num_samples):
-        # Log-normal distribution for k (common in heat transfer problems)
+        # Log-normal distribution for k (common in burger transfer problems)
         k = torch.exp(torch.randn(nx, ny, device=device))
-        q = torch.ones((nx, ny), device=device) * 100  # Constant heat source term
-        T = solve_heat_equation(k, q)
+        q = torch.ones((nx, ny), device=device) * 100  # Constant burger source term
+        T = solve_burger_equation(k, q)
         dataset.append((k, T))
     return dataset
 
 # Custom Dataset
-class HeatDataset(Dataset):
+class BurgerDataset(Dataset):
     def __init__(self, data):
         self.data = data
 
@@ -47,9 +47,9 @@ class HeatDataset(Dataset):
         return self.data[idx]
 
 # Neural Network Model
-class HeatNN(nn.Module):
+class BurgerNN(nn.Module):
     def __init__(self, nx, ny):
-        super(HeatNN, self).__init__()
+        super(BurgerNN, self).__init__()
         self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(64, 32, kernel_size=3, padding=1)
@@ -66,10 +66,10 @@ class HeatNN(nn.Module):
 nx, ny = 50, 50
 num_samples = 1000
 dataset = generate_dataset(num_samples, nx, ny)
-train_loader = DataLoader(HeatDataset(dataset), batch_size=32, shuffle=True)
+train_loader = DataLoader(BurgerDataset(dataset), batch_size=32, shuffle=True)
 
 # Initialize model, loss, and optimizer
-model = HeatNN(nx, ny).to(device)
+model = BurgerNN(nx, ny).to(device)
 criterion = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
