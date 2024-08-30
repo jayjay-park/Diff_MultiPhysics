@@ -84,100 +84,103 @@ class NavierStokesSimulator(torch.nn.Module):
         f_hat = self.dealias * torch.fft.fftn(f)
         return torch.real(torch.fft.ifftn(f_hat))
 
-def simulate_and_plot(simulator, vx, vy, n_steps):
-    # Compute the initial vorticity
-    wz_input = simulator.curl(vx, vy).cpu().numpy()
+# def simulate_and_plot(simulator, vx, vy, n_steps):
+#     # Compute the initial vorticity
+#     wz_input = simulator.curl(vx, vy).cpu().numpy()
 
-    # Run simulation for n_steps
-    for _ in range(n_steps):
-        vx, vy = simulator(vx, vy)
+#     # Run simulation for n_steps
+#     for _ in range(n_steps):
+#         vx, vy = simulator(vx, vy)
 
-    # Compute the final vorticity after n_steps
-    wz_output = simulator.curl(vx, vy).cpu().numpy()
+#     # Compute the final vorticity after n_steps
+#     wz_output = simulator.curl(vx, vy).cpu().numpy()
 
-    plot = False
-    if plot == True:
-        # Save the plots of vx, vy, input, and output vorticity fields
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+#     plot = False
+#     if plot == True:
+#         # Save the plots of vx, vy, input, and output vorticity fields
+#         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
-        # Plot vx field
-        im1 = axes[0, 0].imshow(vx.cpu().numpy(), cmap='RdBu')
-        axes[0, 0].set_title('vx Velocity Field')
-        axes[0, 0].invert_yaxis()
-        axes[0, 0].axis('off')
-        fig.colorbar(im1, ax=axes[0, 0], orientation='vertical')
+#         # Plot vx field
+#         im1 = axes[0, 0].imshow(vx.cpu().numpy(), cmap='RdBu')
+#         axes[0, 0].set_title('vx Velocity Field')
+#         axes[0, 0].invert_yaxis()
+#         axes[0, 0].axis('off')
+#         fig.colorbar(im1, ax=axes[0, 0], orientation='vertical')
 
-        # Plot vy field
-        im2 = axes[0, 1].imshow(vy.cpu().numpy(), cmap='RdBu')
-        axes[0, 1].set_title('vy Velocity Field')
-        axes[0, 1].invert_yaxis()
-        axes[0, 1].axis('off')
-        fig.colorbar(im2, ax=axes[0, 1], orientation='vertical')
+#         # Plot vy field
+#         im2 = axes[0, 1].imshow(vy.cpu().numpy(), cmap='RdBu')
+#         axes[0, 1].set_title('vy Velocity Field')
+#         axes[0, 1].invert_yaxis()
+#         axes[0, 1].axis('off')
+#         fig.colorbar(im2, ax=axes[0, 1], orientation='vertical')
 
-        # Plot input vorticity field
-        im3 = axes[1, 0].imshow(wz_input, cmap='RdBu')
-        axes[1, 0].set_title('Input Vorticity')
-        axes[1, 0].invert_yaxis()
-        axes[1, 0].axis('off')
-        fig.colorbar(im3, ax=axes[1, 0], orientation='vertical')
+#         # Plot input vorticity field
+#         im3 = axes[1, 0].imshow(wz_input, cmap='RdBu')
+#         axes[1, 0].set_title('Input Vorticity')
+#         axes[1, 0].invert_yaxis()
+#         axes[1, 0].axis('off')
+#         fig.colorbar(im3, ax=axes[1, 0], orientation='vertical')
 
-        # Plot output vorticity field
-        im4 = axes[1, 1].imshow(wz_output, cmap='RdBu')
-        axes[1, 1].set_title('Output Vorticity')
-        axes[1, 1].invert_yaxis()
-        axes[1, 1].axis('off')
-        fig.colorbar(im4, ax=axes[1, 1], orientation='vertical')
+#         # Plot output vorticity field
+#         im4 = axes[1, 1].imshow(wz_output, cmap='RdBu')
+#         axes[1, 1].set_title('Output Vorticity')
+#         axes[1, 1].invert_yaxis()
+#         axes[1, 1].axis('off')
+#         fig.colorbar(im4, ax=axes[1, 1], orientation='vertical')
 
-        plt.tight_layout()
-        plt.savefig('velocity_and_vorticity_fields.png', dpi=300)
-    return vx, vy, wz_output
+#         plt.tight_layout()
+#         plt.savefig('velocity_and_vorticity_fields.png', dpi=300)
+#     return vx, vy, wz_output
 
-def simulate_and_plot2(simulator, vx, vy, n_steps):
+def simulate(simulator, vx, vy, n_steps):
     # Compute the initial vorticity
     wz_input = simulator.curl(vx, vy).cpu().numpy()
     seq = []
 
     # Run simulation for n_steps
-    for _ in range(n_steps):
+    for s in range(n_steps):
         seq.append(torch.stack([vx, vy]))
         vx, vy = simulator(vx, vy)
         # Compute the final vorticity after n_steps
         wz_output = simulator.curl(vx, vy).cpu().numpy()
 
-    # Save the plots of vx, vy, input, and output vorticity fields
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
-    # Plot vx field
-    im1 = axes[0, 0].imshow(vx.cpu().numpy(), cmap='RdBu')
-    axes[0, 0].set_title('vx Velocity Field')
-    axes[0, 0].invert_yaxis()
-    axes[0, 0].axis('off')
-    fig.colorbar(im1, ax=axes[0, 0], orientation='vertical')
+        if s % 50 == 0:
+            # Save the plots of vx, vy, input, and output vorticity fields
+            fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
-    # Plot vy field
-    im2 = axes[0, 1].imshow(vy.cpu().numpy(), cmap='RdBu')
-    axes[0, 1].set_title('vy Velocity Field')
-    axes[0, 1].invert_yaxis()
-    axes[0, 1].axis('off')
-    fig.colorbar(im2, ax=axes[0, 1], orientation='vertical')
+            # Plot vx field
+            im1 = axes[0, 0].imshow(vx.cpu().numpy(), cmap='RdBu')
+            axes[0, 0].set_title(f'vx Velocity Field at time={s}')
+            axes[0, 0].invert_yaxis()
+            axes[0, 0].axis('off')
+            fig.colorbar(im1, ax=axes[0, 0], orientation='vertical')
 
-    # Plot input vorticity field
-    im3 = axes[1, 0].imshow(wz_input, cmap='RdBu')
-    axes[1, 0].set_title('Input Vorticity')
-    axes[1, 0].invert_yaxis()
-    axes[1, 0].axis('off')
-    fig.colorbar(im3, ax=axes[1, 0], orientation='vertical')
+            # Plot vy field
+            im2 = axes[0, 1].imshow(vy.cpu().numpy(), cmap='RdBu')
+            axes[0, 1].set_title(f'vy Velocity Field at time={s}')
+            axes[0, 1].invert_yaxis()
+            axes[0, 1].axis('off')
+            fig.colorbar(im2, ax=axes[0, 1], orientation='vertical')
 
-    # Plot output vorticity field
-    im4 = axes[1, 1].imshow(wz_output, cmap='RdBu')
-    axes[1, 1].set_title('Output Vorticity')
-    axes[1, 1].invert_yaxis()
-    axes[1, 1].axis('off')
-    fig.colorbar(im4, ax=axes[1, 1], orientation='vertical')
+            # Plot input vorticity field
+            im3 = axes[1, 0].imshow(wz_input, cmap='RdBu')
+            axes[1, 0].set_title('Input Vorticity')
+            axes[1, 0].invert_yaxis()
+            axes[1, 0].axis('off')
+            fig.colorbar(im3, ax=axes[1, 0], orientation='vertical')
 
-    plt.tight_layout()
-    plt.savefig('velocity_and_vorticity_fields.png', dpi=300)
-    return vx, vy, wz_output
+            # Plot output vorticity field
+            im4 = axes[1, 1].imshow(wz_output, cmap='RdBu')
+            axes[1, 1].set_title('Output Vorticity')
+            axes[1, 1].invert_yaxis()
+            axes[1, 1].axis('off')
+            fig.colorbar(im4, ax=axes[1, 1], orientation='vertical')
+
+            plt.tight_layout()
+            plt.savefig(f'velocity_fields_{s}.png', dpi=300)
+
+    return vx, vy, wz_output, torch.stack(seq)
 
 
 def compute_jacobian(simulator, vx, vy):

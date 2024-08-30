@@ -44,8 +44,8 @@ class Timer:
 
 def generate_dataset(simulator, num_samples=500, n_steps=200):
     dataset = []
-    for s in range(num_samples):
-        print(s)
+    for s in range(int(num_samples)):
+        print("initial condition :", s)
         # Generate random initial conditions
         freq_x = torch.normal(mean=4.0, std=0.3, size=(1,), device='cuda').item()
         freq_y = torch.normal(mean=2.0, std=0.5, size=(1,), device='cuda').item()
@@ -60,15 +60,12 @@ def generate_dataset(simulator, num_samples=500, n_steps=200):
 
         # Simulate for n_steps
         with torch.no_grad():
-          vx_final, vy_final, wz = simulate_and_plot(simulator, vx, vy, n_steps)
+          vx_final, vy_final, wz, seq_val = simulate(simulator, vx, vy, n_steps)
 
         # Store the data
         dataset.append({
-            'input_vx': vx_init.cpu().numpy(),
-            'input_vy': vy_init.cpu().numpy(),
-            'output_vx': vx_final.cpu().numpy(),
-            'output_vy': vy_final.cpu().numpy(),
-            'output_wz': wz
+            'vx': seq_val[:, 0].cpu().numpy(),
+            'vy': seq_val[:, 1].cpu().numpy(),
         })
         torch.cuda.empty_cache()
 
@@ -240,27 +237,38 @@ def compute_fim_NS(simulator, q, T_data, noise_std, nx=50, ny=50):
 
 ### Compute Metric ###
 def plot_results(vx, vy, wz, wz_pred, path):
-    plt.figure(figsize=(15, 5))
+    plt.figure(figsize=(15, 10))
+    plt.rcParams.update({'font.size': 16})
 
-    plt.subplot(2, 2, 1)
-    plt.imshow(vx.cpu().numpy(), cmap='viridis')
-    plt.colorbar()
-    plt.title('Input vx')
+    plt.subplot(2, 3, 1)
+    plt.imshow(vx.cpu().numpy(), cmap='inferno')
+    plt.colorbar(fraction=0.045, pad=0.06)
+    plt.title('True vx')
 
-    plt.subplot(2, 2, 2)
-    plt.imshow(vy.cpu().numpy(), cmap='viridis')
-    plt.colorbar()
-    plt.title('Input vy')
+    plt.subplot(2, 3, 2)
+    plt.imshow(wz.cpu().numpy(), cmap='inferno')
+    plt.colorbar(fraction=0.045, pad=0.06)
+    plt.title('Predicted vx')
 
-    plt.subplot(2, 2, 3)
-    plt.imshow(wz.cpu().numpy(), cmap='viridis', vmin=-0.5, vmax=0.5)
-    plt.colorbar()
-    plt.title('True wz')
+    plt.subplot(2, 3, 3)
+    plt.imshow(wz.cpu().numpy() - vy.cpu().numpy(), cmap='viridis')
+    plt.colorbar(fraction=0.045, pad=0.06)
+    plt.title('Error')
 
-    plt.subplot(2, 2, 4)
-    plt.imshow(wz_pred.cpu().numpy(), cmap='viridis', vmin=-0.5, vmax=0.5)
-    plt.colorbar()
-    plt.title('True wz')
+    plt.subplot(2, 3, 4)
+    plt.imshow(vy.cpu().numpy(), cmap='inferno')
+    plt.colorbar(fraction=0.045, pad=0.06)
+    plt.title('True vy')
+
+    plt.subplot(2, 3, 5)
+    plt.imshow(wz_pred.cpu().numpy(), cmap='inferno')
+    plt.colorbar(fraction=0.045, pad=0.06)
+    plt.title('Predicted vy')
+
+    plt.subplot(2, 3, 6)
+    plt.imshow(vy.cpu().numpy() - wz_pred.cpu().numpy(), cmap='viridis')
+    plt.colorbar(fraction=0.045, pad=0.06)
+    plt.title('Error')
 
     plt.savefig(path, dpi=150, bbox_inches='tight')
     plt.close()
@@ -379,7 +387,6 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
                 jac_diff = criterion(target, vjp_out)
                 jac_misfit += jac_diff.detach().cpu().numpy()
                 loss += jac_diff * args.reg_param
-                print("jac_diff", jac_diff)
 
             loss.backward(retain_graph=True)
             optimizer.step()
@@ -502,16 +509,18 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--num_epoch", type=int, default=300)
-    parser.add_argument("--num_train", type=int, default=1000)
-    parser.add_argument("--num_test", type=int, default=200)
-    parser.add_argument("--num_sample", type=int, default=100)
+    parser.add_argument("--num_train", type=int, default=2000)
+    parser.add_argument("--num_test", type=int, default=400)
+    parser.add_argument("--num_sample", type=int, default=2000)
     parser.add_argument("--threshold", type=float, default=1e-8)
-    parser.add_argument("--batch_size", type=int, default=10)
+    parser.add_argument("--batch_size", type=int, default=100)
     parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC"])
-    parser.add_argument("--nx", type=int, default=40)
-    parser.add_argument("--ny", type=int, default=40)
+    parser.add_argument("--nx", type=int, default=64)
+    parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
     parser.add_argument("--reg_param", type=float, default=100.0)
+    parser.add_argument("--nu", type=float, default=0.001) # Viscosity
+    parser.add_argument("--dt", type=float, default=0.001) # time step
 
     args = parser.parse_args()
 
@@ -523,29 +532,18 @@ if __name__ == "__main__":
     for arg, value in vars(args).items():
         logger.info("%s: %s", arg, value)
 
-    # Usage
+    # Initialize
     N = args.nx  # Grid size
     L = 1.0  # Domain length
-    dt = 0.001  # Time step
-    nu = 0.001  # Viscosity
-    n_steps = int(torch.ceil(torch.tensor(0.1 / dt)).item())  # Number of time steps to simulate
-    num_samples = args.num_train + args.num_test  # Number of samples to generate
-
-    simulator = NavierStokesSimulator(N, L, dt, nu).cuda()
-
-    # Generate Training/Test Data
+    dt = args.dt
+    n_steps = int(torch.ceil(torch.tensor((0.3 / dt) + 1)).item())  # Number of time steps to simulate
+    num_samples = (args.num_train + args.num_test)/n_steps  # Number of samples of initial condition to generate
+    simulator = NavierStokesSimulator(N, L, dt, args.nu).cuda()
     datafile = f'../data/NS_{args.nx}_{args.ny}_{args.num_train}_{args.num_test}_NS1.npy'
-    datafile1 = f'../data/NS_{args.nx}_{args.ny}_{args.num_train}_{args.num_test}_NS2.npy'
-    datafile2 = f'../data/NS_{args.nx}_{args.ny}_{args.num_train}_{args.num_test}_NS3.npy'
+
     if os.path.exists(datafile):
         print("Loading Dataset")
-        # Assuming the dataset was a list of tuples [(vx1, vy1, wz1), (vx2, vy2, wz2), ...]
-        # dataset = np.load(datafile, allow_pickle=True)
-        # Create an instance of your custom dataset
         dataset = NavierStokesDataset(datafile)
-
-        # # Accessing the first data sample
-        # vx1, vy1, wz1 = dataset[0]
     else:
         print("Creating Dataset")
 
@@ -555,30 +553,33 @@ if __name__ == "__main__":
         # Save the dataset
         np.save(datafile, dataset)
 
-        print(f"Dataset generated with {num_samples} samples.")
+        print(f"Dataset generated with {num_samples} samples of initial condition.")
         print(f"Each sample contains:")
-        print(f"  - input_vx: shape {dataset[0]['input_vx'].shape}")
-        print(f"  - input_vy: shape {dataset[0]['input_vy'].shape}")
-        print(f"  - output_wz: shape {dataset[0]['output_wz'].shape}")
+        print(f"  - input_vx: shape {dataset[0]['vx'].shape}")
+        print(f"  - input_vy: shape {dataset[0]['vy'].shape}")
 
 
 
     # Load the dataset
     dataset = np.load(datafile, allow_pickle=True)
     print(dataset[0])
+    inputs, outputs = [], []
 
-    # Extract input and output data
-    input_vx = torch.tensor(np.stack([sample['input_vx'] for sample in dataset]), dtype=torch.float32) # 200, 40, 40
-    input_vy = torch.tensor(np.stack([sample['input_vy'] for sample in dataset]), dtype=torch.float32)
-    output_vx = torch.tensor(np.stack([sample['output_vx'] for sample in dataset]), dtype=torch.float32)
-    output_vy = torch.tensor(np.stack([sample['output_vy'] for sample in dataset]), dtype=torch.float32)
-    output_wz = torch.tensor(np.stack([sample['output_wz'] for sample in dataset]), dtype=torch.float32)
+    for num in range(int(num_samples)):
+        one_series = dataset[num]
+        # Extract input and output data
+        one_series_vx = torch.tensor(one_series['vx'], dtype=torch.float32) # 200, 40, 40
+        one_series_vy = torch.tensor(one_series['vy'], dtype=torch.float32)
+        one_series_fields = torch.stack([one_series_vx, one_series_vy]).reshape(-1, 2, args.nx, args.ny)
+        one_series_input = one_series_fields[:-1]
+        one_series_output = one_series_fields[1:]
+        print("one_series_output shape", one_series_output.shape)
+        inputs.append(one_series_input)
+        outputs.append(one_series_output)
 
-    # Combine inputs and outputs
-    inputs = torch.stack([input_vx, input_vy]).reshape(-1, 2, args.nx, args.ny)
-    outputs = torch.stack([output_vx, output_vy]).reshape(-1, 2, args.nx, args.ny)
-
-    total_samples = inputs.shape[0]
+    inputs = torch.stack(inputs).reshape(-1, 2, args.nx, args.ny)
+    outputs = torch.stack(outputs).reshape(-1, 2, args.nx, args.ny)
+    print(inputs.shape, outputs.shape)
     inputs_train = inputs[:args.num_train]
     outputs_train = outputs[:args.num_train]
     inputs_test = inputs[args.num_train:args.num_train + args.num_test]
