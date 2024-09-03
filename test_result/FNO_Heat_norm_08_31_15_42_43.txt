@@ -1,0 +1,18 @@
+lr: 0.001
+weight_decay: 0.0005
+num_epoch: 500
+num_train: 100
+num_test: 100
+num_sample: 100
+threshold: 1e-08
+batch_size: 100
+loss_type: JAC
+nx: 64
+ny: 64
+noise: 0.01
+reg_param: 500.0
+Loss Type: JAC
+Batch Size: 100
+Training Loss: 0.0008902308181859553
+Test Loss: 0.00015141737821977586
+MSE diff: 0.0008902308181859553
