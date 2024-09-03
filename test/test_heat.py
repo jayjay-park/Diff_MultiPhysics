@@ -91,7 +91,7 @@ class Timer:
 
 #     return T
 
-def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1000):
+def solve_heat_equation(k, q, nx=50, ny=50, num_iterations=1):
     dx = dy = 1.0 / (nx - 1)
     T = torch.zeros((nx, ny), device=k.device)  # Initialize temperature with boundary temperature
     # Boundary conditions (Dirichlet)
@@ -572,16 +572,16 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--num_epoch", type=int, default=500)
-    parser.add_argument("--num_train", type=int, default=100)
-    parser.add_argument("--num_test", type=int, default=100)
-    parser.add_argument("--num_sample", type=int, default=100)
+    parser.add_argument("--num_train", type=int, default=1000)
+    parser.add_argument("--num_test", type=int, default=200)
+    parser.add_argument("--num_sample", type=int, default=1000)
     parser.add_argument("--threshold", type=float, default=1e-8)
     parser.add_argument("--batch_size", type=int, default=100)
-    parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC"])
+    parser.add_argument("--loss_type", default="MSE", choices=["MSE", "JAC"])
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
-    parser.add_argument("--reg_param", type=float, default=500.0)
+    parser.add_argument("--reg_param", type=float, default=100.0)
 
     args = parser.parse_args()
 

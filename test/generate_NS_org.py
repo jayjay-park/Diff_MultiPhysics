@@ -199,7 +199,7 @@ if __name__ == "__main__":
     L = 1.0  # Domain length
     dt = 0.001  # Time step
     nu = 0.001  # Viscosity
-    n_steps = 700  # Number of time steps to simulate
+    n_steps = 300  # Number of time steps to simulate
 
     simulator = NavierStokesSimulator(N, L, dt, nu).cuda()
 
@@ -209,10 +209,16 @@ if __name__ == "__main__":
 
     # # Initial Condition (vortex)
     # Generate random parameters for the sinusoidal function
-    freq_x = torch.normal(mean=4.0, std=0.3, size=(1,), device='cuda').item()
-    freq_y = torch.normal(mean=2.0, std=0.5, size=(1,), device='cuda').item()
-    phase_x = torch.normal(mean=0.0, std=1., size=(1,), device='cuda').item()
-    phase_y = torch.normal(mean=0.0, std=1., size=(1,), device='cuda').item()
+    # freq_x = torch.normal(mean=3.7697, std=0.0443, size=(1,), device='cuda').item()
+    # freq_y = torch.normal(mean=2.9267, std=0.2585, size=(1,), device='cuda').item()
+    # phase_x = torch.normal(mean=0.5348, std=0.1121, size=(1,), device='cuda').item()
+    # phase_y = torch.normal(mean=0.8195, std=1.7173, size=(1,), device='cuda').item()
+
+    freq_x = torch.normal(mean=4.0, std=0.3, size=(1,), device=device).item()
+    freq_y = torch.normal(mean=2.0, std=0.5, size=(1,), device=device).item()
+    phase_x = torch.normal(mean=0.0, std=1., size=(1,), device=device).item()
+    phase_y = torch.normal(mean=0.0, std=1., size=(1,), device=device).item()
+
     print(freq_x, freq_y, phase_x, phase_y)
 
     # Initial Condition (vortex) using sinusoidal function with random parameters
@@ -220,7 +226,7 @@ if __name__ == "__main__":
     vy = torch.sin(freq_x * torch.pi * xx + phase_x)
 
     # Simulate and plot the vorticity fields
-    simulate_and_plot(simulator, vx, vy, n_steps)
+    simulate(simulator, vx, vy, n_steps)
 
 
     # Compute Jacobian

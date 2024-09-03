@@ -111,8 +111,8 @@ def main():
             plotThisTurn = True
         if (plotRealTime and plotThisTurn) or (i == Nt-1):
             plt.cla()
-            plt.imshow(wz.cpu().numpy(), cmap='RdBu')
-            plt.clim(-20, 20)
+            plt.imshow(vy.cpu().numpy(), cmap='RdBu')
+            # plt.clim(-20, 20)
             ax = plt.gca()
             ax.invert_yaxis()
             ax.get_xaxis().set_visible(False)

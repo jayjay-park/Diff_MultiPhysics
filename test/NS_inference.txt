@@ -1,10 +1,155 @@
 ## MSE ##
 
+# When epochs=300 # 
 Estimated freq_x: Mean = 3.78191, Std = 0.06091
 Estimated freq_y: Mean = 0.771055, Std = 0.331541
 Estimated phase_x: Mean = 2.44009, Std = 0.145286
 Estimated phase_y: Mean = -0.43830, Std = 0.18778
-Mean Absolute Error of Vorticity: 15.1783
+Mean Absolute Error of Vorticity: 15.1783 *8192
+
+# When epochs=1000 #
+Estimated freq_x: Mean = 3.780039072036743, Std = 0.06093307584524155
+Estimated freq_y: Mean = 1.3649181127548218, Std = 0.37078073620796204
+Estimated phase_x: Mean = 2.443596601486206, Std = 0.14540749788284302
+Estimated phase_y: Mean = 0.003578627947717905, Std = 0.30135098099708557
+Sum of Absolute Error of Vorticity: 57668.8516
+
+Estimated freq_x: Mean = 3.992732524871826, Std = 0.04444122314453125
+Estimated freq_y: Mean = 1.8733574151992798, Std = 0.37341058254241943
+Estimated phase_x: Mean = 0.005067102611064911, Std = 0.11044276505708694
+Estimated phase_y: Mean = -0.031882427632808685, Std = 0.29280105233192444
+samples:  torch.Size([10000, 64, 64])
+Sum of Absolute Error of Vorticity: 6504.0127
+
+Estimated freq_x: Mean = 3.752023458480835, Std = 0.04208151251077652
+Estimated freq_y: Mean = 1.5048388242721558, Std = 0.09473379701375961
+Estimated phase_x: Mean = 0.5645486116409302, Std = 0.12371150404214859
+Estimated phase_y: Mean = -0.7132729887962341, Std = 0.08797027915716171
+samples shape: torch.Size([1000, 30, 64, 64])
+Time step 0:
+  Sum of Absolute Error of Vorticity: 25022.7363
+  Sum of Absolute Error of Vx: 2326.9878
+  Sum of Absolute Error of Vy: 1436.9470
+Time step 1:
+  Sum of Absolute Error of Vorticity: 20968.0508
+  Sum of Absolute Error of Vx: 2698.0361
+  Sum of Absolute Error of Vy: 1324.5554
+Time step 2:
+  Sum of Absolute Error of Vorticity: 21522.8281
+  Sum of Absolute Error of Vx: 2754.3069
+  Sum of Absolute Error of Vy: 1386.4913
+Time step 3:
+  Sum of Absolute Error of Vorticity: 21648.6387
+  Sum of Absolute Error of Vx: 2780.1101
+  Sum of Absolute Error of Vy: 1413.8223
+Time step 4:
+  Sum of Absolute Error of Vorticity: 21513.3926
+  Sum of Absolute Error of Vx: 2785.0801
+  Sum of Absolute Error of Vy: 1419.0640
+Time step 5:
+  Sum of Absolute Error of Vorticity: 21274.4141
+  Sum of Absolute Error of Vx: 2780.2598
+  Sum of Absolute Error of Vy: 1414.9165
+Time step 6:
+  Sum of Absolute Error of Vorticity: 21018.5391
+  Sum of Absolute Error of Vx: 2771.4321
+  Sum of Absolute Error of Vy: 1407.9121
+Time step 7:
+  Sum of Absolute Error of Vorticity: 20802.4004
+  Sum of Absolute Error of Vx: 2760.5933
+  Sum of Absolute Error of Vy: 1400.5302
+Time step 8:
+  Sum of Absolute Error of Vorticity: 20647.6875
+  Sum of Absolute Error of Vx: 2748.4807
+  Sum of Absolute Error of Vy: 1394.3109
+Time step 9:
+  Sum of Absolute Error of Vorticity: 20566.5137
+  Sum of Absolute Error of Vx: 2735.6987
+  Sum of Absolute Error of Vy: 1391.7848
+Time step 10:
+  Sum of Absolute Error of Vorticity: 20577.3887
+  Sum of Absolute Error of Vx: 2722.7549
+  Sum of Absolute Error of Vy: 1393.0129
+Time step 11:
+  Sum of Absolute Error of Vorticity: 20721.9180
+  Sum of Absolute Error of Vx: 2710.1597
+  Sum of Absolute Error of Vy: 1398.0951
+Time step 12:
+  Sum of Absolute Error of Vorticity: 21013.8203
+  Sum of Absolute Error of Vx: 2697.7402
+  Sum of Absolute Error of Vy: 1407.8032
+Time step 13:
+  Sum of Absolute Error of Vorticity: 21464.5273
+  Sum of Absolute Error of Vx: 2685.5522
+  Sum of Absolute Error of Vy: 1421.8960
+Time step 14:
+  Sum of Absolute Error of Vorticity: 22077.4238
+  Sum of Absolute Error of Vx: 2673.2068
+  Sum of Absolute Error of Vy: 1439.3962
+Time step 15:
+  Sum of Absolute Error of Vorticity: 22894.6973
+  Sum of Absolute Error of Vx: 2661.3577
+  Sum of Absolute Error of Vy: 1460.3877
+Time step 16:
+  Sum of Absolute Error of Vorticity: 23944.5664
+  Sum of Absolute Error of Vx: 2650.2920
+  Sum of Absolute Error of Vy: 1483.8635
+Time step 17:
+  Sum of Absolute Error of Vorticity: 25179.8223
+  Sum of Absolute Error of Vx: 2639.8196
+  Sum of Absolute Error of Vy: 1509.6831
+Time step 18:
+  Sum of Absolute Error of Vorticity: 26560.5117
+  Sum of Absolute Error of Vx: 2629.1750
+  Sum of Absolute Error of Vy: 1537.3583
+Time step 19:
+  Sum of Absolute Error of Vorticity: 28062.0156
+  Sum of Absolute Error of Vx: 2619.0996
+  Sum of Absolute Error of Vy: 1566.0851
+Time step 20:
+  Sum of Absolute Error of Vorticity: 29652.8652
+  Sum of Absolute Error of Vx: 2608.3369
+  Sum of Absolute Error of Vy: 1594.6790
+Time step 21:
+  Sum of Absolute Error of Vorticity: 31371.5957
+  Sum of Absolute Error of Vx: 2596.7053
+  Sum of Absolute Error of Vy: 1622.6254
+Time step 22:
+  Sum of Absolute Error of Vorticity: 33383.8359
+  Sum of Absolute Error of Vx: 2583.8840
+  Sum of Absolute Error of Vy: 1654.5673
+Time step 23:
+  Sum of Absolute Error of Vorticity: 35913.3906
+  Sum of Absolute Error of Vx: 2569.4282
+  Sum of Absolute Error of Vy: 1713.0288
+Time step 24:
+  Sum of Absolute Error of Vorticity: 47731.3516
+  Sum of Absolute Error of Vx: 2965.3169
+  Sum of Absolute Error of Vy: 1791.3337
+Time step 25:
+  Sum of Absolute Error of Vorticity: 491767.1250
+  Sum of Absolute Error of Vx: 15450.9531
+  Sum of Absolute Error of Vy: 20929.1016
+Time step 26:
+  Sum of Absolute Error of Vorticity: 7771317.5000
+  Sum of Absolute Error of Vx: 222085.5781
+  Sum of Absolute Error of Vy: 310091.7812
+Time step 27:
+  Sum of Absolute Error of Vorticity: 126791592.0000
+  Sum of Absolute Error of Vx: 3532303.0000
+  Sum of Absolute Error of Vy: 4842309.0000
+Time step 28:
+  Sum of Absolute Error of Vorticity: 2073283328.0000
+  Sum of Absolute Error of Vx: 56885724.0000
+  Sum of Absolute Error of Vy: 73150320.0000
+Time step 29:
+  Sum of Absolute Error of Vorticity: 35086385152.0000
+  Sum of Absolute Error of Vx: 964498176.0000
+  Sum of Absolute Error of Vy: 1145221120.0000
+
+# When epochs=2000 # 
+
+
 
 ## True ##
 
@@ -16,8 +161,28 @@ Mean Absolute Error of Vorticity: 3.9258
 
 ## JAC ##
 
+# When epochs=300 # 
+
 Estimated freq_x: Mean = 3.7521519660949707, Std = 0.05876480042934418
 Estimated freq_y: Mean = 2.085395097732544, Std = 0.04591556265950203
 Estimated phase_x: Mean = 2.48661208152771, Std = 0.1434866338968277
 Estimated phase_y: Mean = 0.3373028337955475, Std = 0.11813565343618393
 Mean Absolute Error of Vorticity: 13.6998
+
+Estimated freq_x: Mean = 3.9932522773742676, Std = 0.04481031745672226
+Estimated freq_y: Mean = 1.974269151687622, Std = 0.05539947375655174
+Estimated phase_x: Mean = 0.003437628038227558, Std = 0.11013039201498032
+Estimated phase_y: Mean = 0.022476056590676308, Std = 0.1226087361574173
+Sum of Absolute Error of Vorticity: 1855.8635
+
+## TRUE ##
+
+Estimated freq_x: Mean = 4.047243595123291, Std = 0.04652416706085205
+Estimated freq_y: Mean = 2.207683801651001, Std = 0.05520569533109665
+Estimated phase_x: Mean = -0.15668189525604248, Std = 0.11705014854669571
+Estimated phase_y: Mean = -0.35431891679763794, Std = 0.12136533856391907
+
+Estimated freq_x: Mean = 3.9889068603515625, Std = 0.2943266034126282
+Estimated freq_y: Mean = 2.0172154903411865, Std = 0.5095440149307251
+Estimated phase_x: Mean = 0.0175970196723938, Std = 0.9823967814445496
+Estimated phase_y: Mean = -0.01517071109265089, Std = 0.9828560948371887

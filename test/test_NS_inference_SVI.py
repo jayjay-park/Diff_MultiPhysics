@@ -49,8 +49,13 @@ def generate_synthetic_data():
     phase_x = torch.normal(mean=0.0, std=1., size=(1,), device=device).item()
     phase_y = torch.normal(mean=0.0, std=1., size=(1,), device=device).item()
 
-    vx = -torch.sin(freq_y * torch.pi * simulator.yy + phase_y)
-    vy = torch.sin(freq_x * torch.pi * simulator.xx + phase_x)
+    # freq_x = torch.tensor(4.0)
+    # freq_y = torch.tensor(2.0)
+    # phase_x = torch.tensor(0.)
+    # phase_y = torch.tensor(0.)
+
+    vx = -torch.sin(freq_y * torch.pi * simulator.yy + phase_x)
+    vy = torch.sin(freq_x * torch.pi * simulator.xx + phase_y)
     
     # Use FNO for prediction
     if loss_type != "TRUE":
@@ -223,7 +228,7 @@ plt.close()
 
 # Generate vorticity samples based on inferred parameters
 wz_samples = []
-num_wz_samples = 2000
+num_wz_samples = 10000
 i = 0
 for fx, fy, px, py in zip(posterior_freq_x[:num_wz_samples], posterior_freq_y[:num_wz_samples], posterior_phase_x[:num_wz_samples], posterior_phase_y[:num_wz_samples]):
     vx = -torch.sin(fy * torch.pi * simulator.yy + py)

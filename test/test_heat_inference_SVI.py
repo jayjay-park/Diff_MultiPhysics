@@ -32,7 +32,7 @@ trainedFNO = FNO(
     latent_channels=64
 ).to(device)
 
-loss_type = "TRUE"
+loss_type = "MSE"
 if loss_type != "TRUE":
     FNO_path = f"../test_result/best_model_FNO_Heat_{loss_type}.pth"
     trainedFNO.load_state_dict(torch.load(FNO_path))
@@ -107,6 +107,9 @@ print(f"Estimated freq_y: Mean = {freq_y_loc}, Std = {freq_y_scale}")
 # Iteration 900/1000 : Loss = 137064356.6147781
 # Estimated freq_x: Mean = 4.226048946380615, Std = 0.10006629675626755
 # Estimated freq_y: Mean = 2.6337428092956543, Std = 0.10470596700906754
+
+# Estimated freq_x: Mean = 4.688716888427734, Std = 0.13563282787799835
+# Estimated freq_y: Mean = 3.3155617713928223, Std = 0.1255725622177124
 
 # True
 # Estimated freq_x: Mean = 4.996736526489258, Std = 0.017203284427523613

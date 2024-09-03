@@ -453,20 +453,11 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
     ]
     for data, name in loss_data:
         if data:
-            with open(f'../test_result/Losses/{name}_{args.loss_type}_{args.nx}_{args.num_train}.csv', 'w', newline='') as file:
+            with open(f'../test_result/Losses/NS_{name}_{args.loss_type}_{args.nx}_{args.num_train}.csv', 'w', newline='') as file:
                 writer = csv.writer(file)
                 writer.writerow(['Epoch', 'Loss'])
                 writer.writerows(enumerate(data, 1))
     print("Losses saved to CSV files.")
-
-    print("Creating plot...")
-    plt.rcParams.update({'font.size': 14})
-    vx, vy, wz = next(iter(test_dataloader))
-    vx, vy, wz = vx.to(device), vy.to(device), wz.to(device)
-    with torch.no_grad():
-        wz_pred = model(torch.cat([vx, vy], dim=1))
-    plot_path = f"../plot/NS_plot/FNO_NS_{loss_type}.png"
-    plot_results(vx[0], vy[0], wz[0], wz_pred[0], plot_path)
 
     # Create loss plot
     print("Create loss plot")
@@ -508,7 +499,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=300)
+    parser.add_argument("--num_epoch", type=int, default=1000)
     parser.add_argument("--num_train", type=int, default=2000)
     parser.add_argument("--num_test", type=int, default=400)
     parser.add_argument("--num_sample", type=int, default=2000)
@@ -518,7 +509,7 @@ if __name__ == "__main__":
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
-    parser.add_argument("--reg_param", type=float, default=100.0)
+    parser.add_argument("--reg_param", type=float, default=50.0)
     parser.add_argument("--nu", type=float, default=0.001) # Viscosity
     parser.add_argument("--dt", type=float, default=0.001) # time step
 
