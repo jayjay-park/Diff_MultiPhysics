@@ -19,9 +19,9 @@ dt = 0.001  # time step
 nu = 1e-3  # viscosity
 n_steps = 30  # number of simulation steps
 loss_type = "JAC"
-n_samples_true = 1000
+n_samples_true = 500
 num_iterations = 500
-num_samples = 5000
+num_samples = 4000
 
 # Step 3: Initialize NavierStokesSimulator and FNO model
 simulator = NavierStokesSimulator(N, L, dt, nu).to(device)
@@ -45,6 +45,10 @@ def generate_synthetic_data(n_step, only_true):
     freq_y = torch.normal(mean=2.0, std=0.5, size=(1,), device=device).item()
     phase_x = torch.normal(mean=0.0, std=1., size=(1,), device=device).item()
     phase_y = torch.normal(mean=0.0, std=1., size=(1,), device=device).item()
+    # freq_x = torch.normal(mean=8.0, std=0.3, size=(1,), device=device).item()
+    # freq_y = torch.normal(mean=16.0, std=0.5, size=(1,), device=device).item()
+    # phase_x = torch.normal(mean=0.0, std=1., size=(1,), device=device).item()
+    # phase_y = torch.normal(mean=0.0, std=1., size=(1,), device=device).item()
     vx = -torch.sin(freq_y * torch.pi * simulator.yy + phase_x)
     vy = torch.sin(freq_x * torch.pi * simulator.xx + phase_y)
     vx_solver= vx.detach()
@@ -88,8 +92,8 @@ def sample_synthetic_data(n_steps, n_samples):
 
 # Step 4: Load trained FNO model
 if loss_type != "TRUE":
-    FNO_path = f"../test_result/best_model_FNO_NS_{loss_type}_nx_{N}.pth"
-    # FNO_path = f"../test_result/best_model_FNO_NS_{loss_type}.pth"
+    # FNO_path = f"../test_result/best_model_FNO_NS_{loss_type}_nx_{N}.pth"
+    FNO_path = f"../test_result/best_model_FNO_NS_{loss_type}.pth"
     fno.load_state_dict(torch.load(FNO_path))
     fno.eval()
     # Generate true data
@@ -120,12 +124,12 @@ def model(observed_vx=None, observed_vy=None):
     
     for t in range(n_steps):
         if t > 0:
-            if loss_type != "TRUE":
-                input_field = torch.stack([vx, vy]).unsqueeze(0)
-                output_field = fno(input_field).squeeze(0)
-                vx, vy = output_field[0], output_field[1]
-            else:
-                vx, vy = simulator(vx, vy)
+            # if loss_type != "TRUE":
+            #     input_field = torch.stack([vx, vy]).unsqueeze(0)
+            #     output_field = fno(input_field).squeeze(0)
+            #     vx, vy = output_field[0], output_field[1]
+            # else:
+            vx, vy = simulator(vx, vy)
         
         pyro.sample(f"obs_vx_{t}", dist.Normal(vx, noise_std * torch.ones_like(vx)).to_event(2), obs=observed_vx[t])
         pyro.sample(f"obs_vy_{t}", dist.Normal(vy, noise_std * torch.ones_like(vy)).to_event(2), obs=observed_vy[t])

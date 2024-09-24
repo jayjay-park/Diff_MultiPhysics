@@ -32,9 +32,9 @@ fno = FNO(
 ).to(device)
 
 # Step 4: Load trained FNO model
-loss_type = "MSE"
-FNO_path = f"../test_result/best_model_FNO_NS_{loss_type}_nx_64.pth"
-# FNO_path = f"../test_result/best_model_FNO_NS_{loss_type}.pth"
+loss_type = "Dissipative"
+# FNO_path = f"../test_result/best_model_FNO_NS_{loss_type}_nx_64.pth"
+FNO_path = f"../test_result/best_model_FNO_NS_{loss_type}.pth"
 fno.load_state_dict(torch.load(FNO_path))
 fno.eval()
 

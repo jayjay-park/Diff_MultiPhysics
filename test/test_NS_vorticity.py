@@ -21,6 +21,7 @@ from functorch import vjp, vmap
 from torch.utils.data import Subset
 from generate_NS_org import *
 from PINO_NS import *
+from baseline import *
 
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from modulus.models.fno import FNO
@@ -194,74 +195,32 @@ def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_st
 
     return fim
 
-# Sobolev norm (HS norm)
-# where we also compare the numerical derivatives between the output and target
-class HsLoss_2d(object):
-    def __init__(self, d=2, p=2, k=1, a=None, group=False, size_average=True, reduction=True):
-        super(HsLoss_2d, self).__init__()
+def plot_loss_checkpoint(epoch, loss_type, mse_diff, test_diff, jac_diff_list=None):
+    # Create loss plot
+    print("Create loss plot")
+    if epoch < 510:
+        mse_diff = np.asarray(mse_diff)
+        jac_diff_list = np.asarray(jac_diff_list)
+        test_diff = np.asarray(test_diff)
+    else: 
+        start_epoch = 30
+        mse_diff = mse_diff[start_epoch:]
+        test_diff = test_diff[start_epoch:]
+        jac_diff_list = jac_diff_list[start_epoch:]  # Only if JAC is relevant
 
-        #Dimension and Lp-norm type are postive
-        assert d > 0 and p > 0
+    path = f"../plot/Loss/checkpoint/FNO_NS_vort_{loss_type}_{epoch}.png"
+    epochs = np.arange(len(mse_diff))
 
-        self.d = d
-        self.p = p
-        self.k = k
-        self.balanced = group
-        self.reduction = reduction
-        self.size_average = size_average
-
-        if a == None:
-            a = [1,] * k
-        self.a = a
-
-    def rel(self, x, y):
-        num_examples = x.size()[0]
-        diff_norms = torch.norm(x.reshape(num_examples,-1) - y.reshape(num_examples,-1), self.p, 1)
-        y_norms = torch.norm(y.reshape(num_examples,-1), self.p, 1)
-        if self.reduction:
-            if self.size_average:
-                return torch.mean(diff_norms/y_norms)
-            else:
-                return torch.sum(diff_norms/y_norms)
-        return diff_norms/y_norms
-
-    def __call__(self, x, y, a=None):
-        nx = x.size()[1]
-        ny = x.size()[2]
-        k = self.k
-        balanced = self.balanced
-        a = self.a
-        x = x.view(x.shape[0], nx, ny, -1)
-        y = y.view(y.shape[0], nx, ny, -1)
-
-        k_x = torch.cat((torch.arange(start=0, end=nx//2, step=1),torch.arange(start=-nx//2, end=0, step=1)), 0).reshape(nx,1).repeat(1,ny)
-        k_y = torch.cat((torch.arange(start=0, end=ny//2, step=1),torch.arange(start=-ny//2, end=0, step=1)), 0).reshape(1,ny).repeat(nx,1)
-        k_x = torch.abs(k_x).reshape(1,nx,ny,1).to(x.device)
-        k_y = torch.abs(k_y).reshape(1,nx,ny,1).to(x.device)
-
-        x = torch.fft.fftn(x, dim=[1, 2])
-        y = torch.fft.fftn(y, dim=[1, 2])
-
-        if balanced==False:
-            weight = 1
-            if k >= 1:
-                weight += a[0]**2 * (k_x**2 + k_y**2)
-            if k >= 2:
-                weight += a[1]**2 * (k_x**4 + 2*k_x**2*k_y**2 + k_y**4)
-            weight = torch.sqrt(weight)
-            loss = self.rel(x*weight, y*weight)
-        else:
-            loss = self.rel(x, y)
-            if k >= 1:
-                weight = a[0] * torch.sqrt(k_x**2 + k_y**2)
-                loss += self.rel(x*weight, y*weight)
-            if k >= 2:
-                weight = a[1] * torch.sqrt(k_x**4 + 2*k_x**2*k_y**2 + k_y**4)
-                loss += self.rel(x*weight, y*weight)
-            loss = loss / (k+1)
-
-        return loss
-
+    fig, ax = plt.subplots()
+    ax.plot(epochs, mse_diff, "P-", lw=1.0, ms=4.0, color="coral", label="MSE (Train)")
+    ax.plot(epochs, test_diff, "P-", lw=1.0, ms=4.0, color="blue", label="MSE (Test)")
+    if args.loss_type == "JAC":
+        ax.plot(epochs, jac_diff_list, "P-", lw=1.0, color="slateblue", ms=4.0, label=r"$\|J^Tv - \hat{J}^Tv\|$")
+    ax.set_xlabel("Epochs",fontsize=24)
+    ax.set_ylabel("Loss", fontsize=24)
+    ax.legend()
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    return
 
 ### Compute Metric ###
 # plot_results(Y_test[0,0].cpu(), Y_test[0,1].cpu(), Y_pred[0, 0], Y_pred[0, 1], plot_path)
@@ -270,32 +229,36 @@ def plot_results(true1, true2, pred1, pred2, path):
     plt.rcParams.update({'font.size': 16})
 
     plt.subplot(2, 3, 1)
-    plt.imshow(true1.cpu().numpy(), cmap='inferno')
+    plt.imshow(true1.cpu().numpy(), cmap='jet')
     plt.colorbar(fraction=0.045, pad=0.06)
     plt.title('True vorticity')
 
     plt.subplot(2, 3, 2)
-    plt.imshow(pred1.cpu().numpy(), cmap='inferno')
+    plt.imshow(pred1.cpu().numpy(), cmap='jet')
     plt.colorbar(fraction=0.045, pad=0.06)
     plt.title('Predicted vorticity')
 
     plt.subplot(2, 3, 3)
-    plt.imshow(true1.cpu().numpy() - pred1.cpu().numpy(), cmap='viridis')
+    error1 = true1.cpu().numpy() - pred1.cpu().numpy()
+    vmin, vmax = 0.0, max(abs(error1.min()), abs(error1.max()))
+    plt.imshow(np.abs(error1), cmap='inferno', vmin=vmin, vmax=vmax)
     plt.colorbar(fraction=0.045, pad=0.06)
     plt.title('Error')
 
     plt.subplot(2, 3, 4)
-    plt.imshow(true2.cpu().numpy(), cmap='inferno')
+    plt.imshow(true2.cpu().numpy(), cmap='jet')
     plt.colorbar(fraction=0.045, pad=0.06)
     plt.title('True Vorticity')
 
     plt.subplot(2, 3, 5)
-    plt.imshow(pred2.cpu().numpy(), cmap='inferno')
+    plt.imshow(pred2.cpu().numpy(), cmap='jet')
     plt.colorbar(fraction=0.045, pad=0.06)
     plt.title('Predicted Vorticity')
 
     plt.subplot(2, 3, 6)
-    plt.imshow(true2.cpu().numpy() - pred2.cpu().numpy(), cmap='viridis')
+    error2 = true2.cpu().numpy() - pred2.cpu().numpy()
+    vmin, vmax = 0.0, max(abs(error2.min()), abs(error2.max()))
+    plt.imshow(np.abs(error2), cmap='inferno', vmin=vmin, vmax=vmax)
     plt.colorbar(fraction=0.045, pad=0.06)
     plt.title('Error')
 
@@ -325,38 +288,9 @@ def plot_data(k, q, T, path):
     return
 
 
+
+
 ### Train ###
-# shape is the tuple shape of each instance
-def sample_uniform_spherical_shell(npoints: int, radii: float, shape: tuple):
-    ndim = np.prod(shape)
-    inner_radius, outer_radius = radii
-    pts = []
-    for i in range(npoints):
-        # uniformly sample radius
-        samp_radius = np.random.uniform(inner_radius, outer_radius)
-        vec = np.random.randn(ndim) # ref: https://mathworld.wolfram.com/SpherePointPicking.html
-        vec /= np.linalg.norm(vec, axis=0)
-        pts.append(np.reshape(samp_radius*vec, shape))
-
-    return np.array(pts)
-
-# Partitions of unity - input is real number, output is in interval [0,1]
-"""
-norm_of_x: real number input
-shift: x-coord of 0.5 point in graph of function
-scale: larger numbers make a steeper descent at shift x-coord
-"""
-def sigmoid_partition_unity(norm_of_x, shift, scale):
-    return 1/(1 + torch.exp(scale * (norm_of_x - shift)))
-
-# Dissipative functions - input is point x in state space (practically, subset of R^n)
-"""
-inputs: input point in state space
-scale: real number 0 < scale < 1 that scales down input x
-"""
-def linear_scale_dissipative_target(inputs, scale):
-    return scale * inputs
-
 
 def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
     # Initialization
@@ -368,7 +302,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
         out_channels=1, # Adjusted for wz output
         decoder_layer_size=128,
         num_fno_layers=6,
-        num_fno_modes=20,
+        num_fno_modes=[32,32],
         padding=3,
         dimension=2,
         latent_channels=64
@@ -434,10 +368,6 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
         vec_batch = vec.unsqueeze(0).repeat(dataloader.batch_size, 1, 1)
         vec_batch = vec_batch.cuda().float()
 
-        # # Save True_j to a CSV file
-        # True_j_flat = True_j.reshape(-1, 2, nx * ny)  # Flatten the last two dimensions
-        # pd.DataFrame(True_j_flat.numpy()).to_csv(csv_filename, index=False)
-        # print(f"Data saved to {csv_filename}")
         # Create vec_batch
         True_j = True_j.float()
         vec_batch = vec.unsqueeze(0).repeat(dataloader.batch_size, 1, 1, 1)
@@ -513,6 +443,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
         print(f"Epoch: {epoch}, Train Loss: {full_loss:.6f}, JAC misfit: {jac_misfit}, Test Loss: {full_test_loss:.6f}")
         if epoch % 50 == 0:
             torch.save(model.state_dict(), f"../test_result/Checkpoint/FNO_NS_vort_{loss_type}_{args.nx}_{args.num_train}_{epoch}.pth")
+            plot_loss_checkpoint(epoch, loss_type, mse_diff, test_diff, jac_diff_list)
         if full_test_loss < lowest_loss:
             print("saved lowest loss model")
             lowest_loss = full_test_loss
@@ -520,7 +451,6 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
             # Save plot
             X_test, Y_test = next(iter(test_dataloader))
             X_test, Y_test = X_test.cuda().float(), Y_test.cuda().float()
-            print("shape", X_test.shape, Y_test.shape)
             with torch.no_grad():
                 Y_pred = model(X_test.unsqueeze(dim=1))
             plot_path = f"../plot/NS_plot/FNO_NS_vort_lowest_{loss_type}.png"
@@ -556,21 +486,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
 
     # Create loss plot
     print("Create loss plot")
-    mse_diff = np.asarray(mse_diff)
-    jac_diff_list = np.asarray(jac_diff_list)
-    test_diff = np.asarray(test_diff)
-    path = f"../plot/Loss/FNO_NS_vort_{loss_type}.png"
-
-    fig, ax = plt.subplots()
-    ax.plot(mse_diff, "P-", lw=2.0, ms=6.0, color="coral", label="MSE (Train)")
-    ax.plot(test_diff, "P-", lw=2.0, ms=6.0, color="indianred", label="MSE (Test)")
-    if args.loss_type == "JAC":
-        ax.plot(jac_diff_list, "P-", lw=2.0, color="slateblue", ms=6.0, label=r"$\|J^Tv - \hat{J}^Tv\|$")
-    ax.set_xlabel("Epochs",fontsize=24)
-    ax.set_ylabel("Loss", fontsize=24)
-    ax.legend()
-    plt.savefig(path, dpi=150, bbox_inches="tight")
-
+    plot_loss_checkpoint(epoch, loss_type, mse_diff, test_diff, jac_diff_list)
     print("Plot saved.")
 
 
@@ -590,24 +506,24 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
     print("device: ", device)
 
-    # Set arguments (hyperparameters)
+    # Set arguments: https://github.com/neuraloperator/neuraloperator/blob/main/config/navier_stokes_config.yaml
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=1000)
-    parser.add_argument("--num_train", type=int, default=1000)
-    parser.add_argument("--num_test", type=int, default=200)
-    parser.add_argument("--num_sample", type=int, default=1000)
-    parser.add_argument("--num_init", type=int, default=10)
+    parser.add_argument("--num_epoch", type=int, default=850)
+    parser.add_argument("--num_train", type=int, default=8000)
+    parser.add_argument("--num_test", type=int, default=2000)
+    parser.add_argument("--num_sample", type=int, default=8000)
+    parser.add_argument("--num_init", type=int, default=40)
     parser.add_argument("--threshold", type=float, default=1e-8)
     parser.add_argument("--batch_size", type=int, default=20)
-    parser.add_argument("--loss_type", default="MSE", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
-    parser.add_argument("--nx", type=int, default=100)
-    parser.add_argument("--ny", type=int, default=100)
+    parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
+    parser.add_argument("--nx", type=int, default=64)
+    parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
-    parser.add_argument("--reg_param", type=float, default=50.0)
+    parser.add_argument("--reg_param", type=float, default=200.0)
     parser.add_argument("--nu", type=float, default=0.001) # Viscosity
-    parser.add_argument("--time_step", type=float, default=0.01) # time step
+    parser.add_argument("--time_step", type=float, default=0.05) # time step
 
     args = parser.parse_args()
 
@@ -659,10 +575,6 @@ if __name__ == "__main__":
     train_y_raw = load_dataset_from_csv(trainy_file, args.nx, args.ny)
     test_x_raw = load_dataset_from_csv(testx_file, args.nx, args.ny)
     test_y_raw = load_dataset_from_csv(testy_file, args.nx, args.ny)
-    # train_x = NSDataset(train_x_raw)
-    # train_y = NSDataset(train_y_raw)
-    # test_x = NSDataset(test_x_raw)
-    # test_y = NSDataset(test_y_raw)
 
 
 

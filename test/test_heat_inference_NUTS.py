@@ -47,7 +47,7 @@ trainedFNO = FNO(
     latent_channels=64
 ).to(device)
 
-loss_type = "JAC"
+loss_type = "MSE"
 FNO_path = f"../test_result/best_model_FNO_Heat_full epoch_{loss_type}_{nx}.pth"
 trainedFNO.load_state_dict(torch.load(FNO_path))
 trainedFNO.eval()
@@ -57,12 +57,12 @@ pred_T = trainedFNO(true_q.unsqueeze(dim=0).unsqueeze(dim=1).float()).squeeze()
 
 # Add noise to create observed data
 noise_std = 0.1
-observed_T = pred_T + noise_std * torch.randn_like(pred_T)
+observed_T = pred_T
 
 # Pyro model: probabilistic model
 def model(observed=None):
     # Prior for q
-    q = pyro.sample("q", dist.Normal(torch.zeros(nx, ny, device=device), torch.ones(nx, ny, device=device)).to_event(2))
+    q = pyro.sample("q", dist.LogNormal(torch.zeros(nx, ny, device=device), torch.ones(nx, ny, device=device)).to_event(2))
     
     # Forward model using FNO
     T = trainedFNO(q.unsqueeze(dim=0).unsqueeze(dim=1).float()).squeeze()

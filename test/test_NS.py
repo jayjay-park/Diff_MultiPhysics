@@ -51,6 +51,10 @@ def generate_dataset(simulator, num_samples=500, n_steps=200):
         freq_y = torch.normal(mean=2.0, std=0.5, size=(1,), device='cuda').item()
         phase_x = torch.normal(mean=0.0, std=1., size=(1,), device='cuda').item()
         phase_y = torch.normal(mean=0.0, std=1., size=(1,), device='cuda').item()
+        # freq_x = torch.normal(mean=8.0, std=0.3, size=(1,), device=device).item()
+        # freq_y = torch.normal(mean=16.0, std=0.5, size=(1,), device=device).item()
+        # phase_x = torch.normal(mean=0.0, std=1., size=(1,), device=device).item()
+        # phase_y = torch.normal(mean=0.0, std=1., size=(1,), device=device).item()
 
         # Initial Condition (vortex) using sinusoidal function with random parameters
         vx = -torch.sin(freq_y * torch.pi * simulator.yy + phase_y)
@@ -212,28 +216,98 @@ def log_likelihood(data, model_output, noise_std):
 def compute_fim_NS(simulator, q, T_data, noise_std, nx=50, ny=50):
     # Ensure k is a tensor with gradient tracking
     q = q.requires_grad_().cuda()
-    vx = q[0]
-    vy = q[1]
-    print("vx shape", vx.shape)
+    print("1", q.shape)
     fim = torch.zeros((2*nx*ny, 2*nx*ny))
     
-    # Add noise
+    # # Add noise
     mean = 0.0
     std_dev = 0.1
 
-    # Generate Gaussian noise
+    # # Generate Gaussian noise
     noise = torch.randn(q.size()) * std_dev + mean
     # Solve heat equation
-    out_vx, out_vy = simulator(vx, vy)
+    out_vx, out_vy = simulator(q[0], q[1])
     T_pred = torch.stack([out_vx, out_vy])
     T_pred = T_pred + noise.cuda()
     ll = log_likelihood(T_data.cuda(), T_pred.cuda(), noise_std)
+    print("ll", ll)
     flat_Jacobian = torch.autograd.grad(inputs=q, outputs=ll, create_graph=True)[0].flatten() # 50 by 50 -> [2500]
     print("flatten", flat_Jacobian.shape)
     flat_Jacobian = flat_Jacobian.reshape(1, -1)
-    fim = torch.matmul(flat_Jacobian.T, flat_Jacobian)
-
+    fim_intermediate = torch.matmul(flat_Jacobian.T, flat_Jacobian)
+    print(fim_intermediate)
+    print("inter", fim_intermediate.shape)
+    fim = fim_intermediate
     return fim
+
+# Sobolev norm (HS norm)
+# where we also compare the numerical derivatives between the output and target
+class HsLoss_2d(object):
+    def __init__(self, d=2, p=2, k=1, a=None, group=False, size_average=True, reduction=True):
+        super(HsLoss_2d, self).__init__()
+
+        #Dimension and Lp-norm type are postive
+        assert d > 0 and p > 0
+
+        self.d = d
+        self.p = p
+        self.k = k
+        self.balanced = group
+        self.reduction = reduction
+        self.size_average = size_average
+
+        if a == None:
+            a = [1,] * k
+        self.a = a
+
+    def rel(self, x, y):
+        num_examples = x.size()[0]
+        diff_norms = torch.norm(x.reshape(num_examples,-1) - y.reshape(num_examples,-1), self.p, 1)
+        y_norms = torch.norm(y.reshape(num_examples,-1), self.p, 1)
+        if self.reduction:
+            if self.size_average:
+                return torch.mean(diff_norms/y_norms)
+            else:
+                return torch.sum(diff_norms/y_norms)
+        return diff_norms/y_norms
+
+    def __call__(self, x, y, a=None):
+        nx = x.size()[1]
+        ny = x.size()[2]
+        k = self.k
+        balanced = self.balanced
+        a = self.a
+        x = x.view(x.shape[0], nx, ny, -1)
+        y = y.view(y.shape[0], nx, ny, -1)
+
+        k_x = torch.cat((torch.arange(start=0, end=nx//2, step=1),torch.arange(start=-nx//2, end=0, step=1)), 0).reshape(nx,1).repeat(1,ny)
+        k_y = torch.cat((torch.arange(start=0, end=ny//2, step=1),torch.arange(start=-ny//2, end=0, step=1)), 0).reshape(1,ny).repeat(nx,1)
+        k_x = torch.abs(k_x).reshape(1,nx,ny,1).to(x.device)
+        k_y = torch.abs(k_y).reshape(1,nx,ny,1).to(x.device)
+
+        x = torch.fft.fftn(x, dim=[1, 2])
+        y = torch.fft.fftn(y, dim=[1, 2])
+
+        if balanced==False:
+            weight = 1
+            if k >= 1:
+                weight += a[0]**2 * (k_x**2 + k_y**2)
+            if k >= 2:
+                weight += a[1]**2 * (k_x**4 + 2*k_x**2*k_y**2 + k_y**4)
+            weight = torch.sqrt(weight)
+            loss = self.rel(x*weight, y*weight)
+        else:
+            loss = self.rel(x, y)
+            if k >= 1:
+                weight = a[0] * torch.sqrt(k_x**2 + k_y**2)
+                loss += self.rel(x*weight, y*weight)
+            if k >= 2:
+                weight = a[1] * torch.sqrt(k_x**4 + 2*k_x**2*k_y**2 + k_y**4)
+                loss += self.rel(x*weight, y*weight)
+            loss = loss / (k+1)
+
+        return loss
+
 
 ### Compute Metric ###
 def plot_results(vx, vy, wz, wz_pred, path):
@@ -297,6 +371,38 @@ def plot_data(k, q, T, path):
 
 
 ### Train ###
+# shape is the tuple shape of each instance
+def sample_uniform_spherical_shell(npoints: int, radii: float, shape: tuple):
+    ndim = np.prod(shape)
+    inner_radius, outer_radius = radii
+    pts = []
+    for i in range(npoints):
+        # uniformly sample radius
+        samp_radius = np.random.uniform(inner_radius, outer_radius)
+        vec = np.random.randn(ndim) # ref: https://mathworld.wolfram.com/SpherePointPicking.html
+        vec /= np.linalg.norm(vec, axis=0)
+        pts.append(np.reshape(samp_radius*vec, shape))
+
+    return np.array(pts)
+
+# Partitions of unity - input is real number, output is in interval [0,1]
+"""
+norm_of_x: real number input
+shift: x-coord of 0.5 point in graph of function
+scale: larger numbers make a steeper descent at shift x-coord
+"""
+def sigmoid_partition_unity(norm_of_x, shift, scale):
+    return 1/(1 + torch.exp(scale * (norm_of_x - shift)))
+
+# Dissipative functions - input is point x in state space (practically, subset of R^n)
+"""
+inputs: input point in state space
+scale: real number 0 < scale < 1 that scales down input x
+"""
+def linear_scale_dissipative_target(inputs, scale):
+    return scale * inputs
+
+
 def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
     # Initialization
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -324,6 +430,26 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
     nx, ny = args.nx, args.ny
 
     # Gradient-matching and training logic
+    if args.loss_type == "Sobolev":
+        Sobolev_Loss = HsLoss_2d()
+    if args.loss_type == "Dissipative":
+        Sobolev_Loss = HsLoss_2d()
+        # DISSIPATIVE REGULARIZATION PARAMETERS
+        # below, the number before multiplication by S is the radius in the L2 norm of the function space
+        S=args.nx
+        radius = 156.25 * S # radius of inner ball
+        scale_down = 0.5 # rate at which to linearly scale down inputs
+        loss_weight = 0.01 * (S**2) # normalized by L2 norm in function space
+        radii = (radius, (525 * S) + radius) # inner and outer radii, in L2 norm of function space
+        sampling_fn = sample_uniform_spherical_shell #numsampled is batch size
+        target_fn = linear_scale_dissipative_target
+        dissloss = nn.MSELoss(reduction='mean')
+
+        modes = 20
+        width = 64
+
+        in_dim = 1
+        out_dim = 1
     if args.loss_type == "JAC":
         csv_filename = f'../data/true_j_NS_{nx}_{args.num_train}.csv'
         if os.path.exists(csv_filename):
@@ -378,6 +504,22 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
             if args.loss_type == "MSE":
                 output = model(X)
                 loss = criterion(output.squeeze(), Y.squeeze()) / torch.norm(Y)
+            elif args.loss_type == "Sobolev":
+                output = model(X)
+                loss = criterion(output.squeeze(), Y.squeeze()) / torch.norm(Y)
+                sob_loss = Sobolev_Loss(output.squeeze(), Y.squeeze())
+                loss += sob_loss
+            elif args.loss_type == "Dissipative":
+                output = model(X)
+                loss = Sobolev_Loss(output.squeeze(), Y.squeeze())
+
+                x_diss = torch.tensor(sampling_fn(X.shape[0], radii, (S, S, 2)), dtype=torch.float).to(device)
+                # print(x_diss.shape, X.shape)
+                # assert(x_diss.shape == X.shape)
+                y_diss = torch.tensor(target_fn(x_diss, scale_down), dtype=torch.float).to(device)
+                out_diss = model(x_diss.reshape(-1, 2, S, S)).reshape(-1, out_dim)
+                diss_loss = (1/(S**2)) * loss_weight * dissloss(out_diss, y_diss.reshape(-1, out_dim)) # weighted by 1 / (S**2)
+                loss += diss_loss
             else:
             # GM
                 target = True_j[idx].cuda()
@@ -505,7 +647,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_sample", type=int, default=2000)
     parser.add_argument("--threshold", type=float, default=1e-8)
     parser.add_argument("--batch_size", type=int, default=100)
-    parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC"])
+    parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
@@ -527,8 +669,10 @@ if __name__ == "__main__":
     N = args.nx  # Grid size
     L = 1.0  # Domain length
     dt = args.dt
-    n_steps = int(torch.ceil(torch.tensor((0.3 / dt) + 1)).item())  # Number of time steps to simulate
+    n_steps = int(torch.ceil(torch.tensor((0.3 / dt) + 1)).item())  # Number of time steps to simulate (0.06)
     num_samples = (args.num_train + args.num_test)/n_steps  # Number of samples of initial condition to generate
+    num_samples = int(num_samples)
+    print("number of different initial condition: ", num_samples)
     simulator = NavierStokesSimulator(N, L, dt, args.nu).cuda()
     datafile = f'../data/NS_{args.nx}_{args.ny}_{args.num_train}_{args.num_test}_NS1.npy'
 
