@@ -47,7 +47,7 @@ class Timer:
 ### Dataset ###
 
 def generate_dataset(num_samples, num_init, time_step, nx=50, ny=50):
-    input, output init = [], [], []
+    input, output, init = [], [], []
 
     L1, L2 = 2*math.pi, 2*math.pi  # Domain size
     Re = 1000  # Reynolds number
@@ -79,12 +79,10 @@ def generate_dataset(num_samples, num_init, time_step, nx=50, ny=50):
         
         input.append(vorticity_data[:-1])
         output.append(vorticity_data[1:])
+        # print("input length", len(input[0]),"output length", len(output[0]))
+        # print("input 1", input[s][1], "output 0", output[s][0])
+        # print("input -1", input[s][-1], "output -2", output[s][-2])
         
-        # if s == 0:
-        #     plot_vorticity(vorticity_data[0], s, title=f"Vorticity Field at Time Step {i + 1}")
-        # elif s == 1:
-        #     plot_vorticity(vorticity_data[0], s, title=f"Vorticity Field at Time Step {i + 1}")
-
     return input, output, init
 
 
@@ -175,7 +173,11 @@ def log_likelihood(data, model_output, noise_std):
     #     data.numel() * torch.log(torch.tensor(noise_std))
     return (1/(2*noise_std**2))*torch.sum((data - model_output)**2)
 
-def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_step, Re, num_observations):
+def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_step, Re, input_index, s, num_observations):
+    '''
+    s: index of training data
+    T_data index: [1, ... , 43]
+    '''
     # Ensure k is a tensor with gradient tracking
     q = input.requires_grad_().cuda()
     fim = torch.zeros((nx*ny, nx*ny))
@@ -183,8 +185,6 @@ def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_st
     # Generate isotrophic gaussian noise
     for j in range(num_observations):
         normal = torch.randn(nx, ny)
-        if j < 2:
-            plot_single(normal, f"../plot/NS_plot/normal_{j}.png")
         gaussian_noise = noise_std * normal
         T_pred = simulator(q, f=forcing, T=time_step, Re=Re)
         T_pred = T_pred + gaussian_noise.cuda()
@@ -192,10 +192,10 @@ def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_st
         flat_Jacobian = torch.autograd.grad(inputs=q, outputs=ll, create_graph=True)[0].flatten() # 50 by 50 -> [2500]
         flat_Jacobian = flat_Jacobian.reshape(1, -1)
         fim += torch.matmul(flat_Jacobian.T, flat_Jacobian).detach().cpu()
-        if j < 10:
-            plot_single(fim, f"../plot/NS_plot/fim_{j}.png")
-            plot_single(fim[:100,:100], f"../plot/NS_plot/fim_sub_{j}.png")
-            plot_single(fim.reshape(64,64,64,64)[:,:,0,0], f"../plot/NS_plot/fim_sub_reshape_{j}.png")
+        if (j == 9) or (j == 49) or (j == 99):
+            plot_single(fim, f"../plot/NS_plot/{num_observations}/fim_{input_index}_{j}_t={s}.png", "viridis")
+            plot_single(fim[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_{j}_t={s}.png", "viridis")
+            plot_single(fim[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_{j}_t={s}.png", "viridis")
 
 
     return fim
@@ -223,7 +223,9 @@ def plot_loss_checkpoint(epoch, loss_type, mse_diff, test_diff, jac_diff_list=No
         ax.plot(epochs, jac_diff_list, "P-", lw=1.0, color="black", ms=4.0, label=r"$\|J^Tv - \hat{J}^Tv\|$")
     ax.set_xlabel("Epochs",fontsize=24)
     ax.set_ylabel("Loss", fontsize=24)
+    ax.set_yscale('log')
     ax.legend()
+    ax.grid(True)
     plt.savefig(path, dpi=150, bbox_inches="tight")
     return
 
@@ -348,7 +350,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
         in_dim = 1
         out_dim = 1
     elif args.loss_type == "JAC":
-        csv_filename = f'../data/true_j_NS_{nx}_{args.num_train}.csv'
+        csv_filename = f'../data/true_j_NS_{nx}_{args.num_train}_{args.num_obs}.csv'
         if os.path.exists(csv_filename):
             # Load True_j
             True_j_flat = pd.read_csv(csv_filename).values
@@ -370,7 +372,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
                     vjp = vjp_tru_func(vec[index_vec].cuda())[0].detach().cpu()
                     True_j[batch_idx, i] = vjp
                     if index_vec < 30:
-                        plot_single(vjp, f'../plot/NS_plot/FIM/{args.num_obs}_vjp_{index_vec}.png')
+                        plot_single(vjp, f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_vjp_{index_vec}.png')
                     index_vec += 1
 
             # Save True_j to a CSV file
@@ -516,11 +518,11 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
     return model
 
 
-def plot_single(true1, path):
+def plot_single(true1, path, cmap="magma"):
     plt.figure(figsize=(10, 10))
     plt.rcParams.update({'font.size': 16})
 
-    plt.imshow(true1, cmap='magma')
+    plt.imshow(true1, cmap=cmap)
     plt.colorbar(fraction=0.045, pad=0.06)
     # plt.title('True Saturation')
 
@@ -539,13 +541,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=850)
-    parser.add_argument("--num_train", type=int, default=80) #8000
-    parser.add_argument("--num_test", type=int, default=20)
-    parser.add_argument("--num_sample", type=int, default=80) #8000
-    parser.add_argument("--num_init", type=int, default=2)
+    parser.add_argument("--num_epoch", type=int, default=1000)
+    parser.add_argument("--num_train", type=int, default=2000) #8000
+    parser.add_argument("--num_test", type=int, default=200)
+    parser.add_argument("--num_sample", type=int, default=2000) #8000
+    parser.add_argument("--num_init", type=int, default=50)
     parser.add_argument("--threshold", type=float, default=1e-8)
-    parser.add_argument("--batch_size", type=int, default=20)
+    parser.add_argument("--batch_size", type=int, default=100)
     parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
@@ -576,10 +578,10 @@ if __name__ == "__main__":
     ns_solver = NavierStokes2d(args.nx, args.ny, L1=L1, L2=L2, device="cuda")
 
     # Generate Training/Test Data
-    trainx_file = f'../data/NS_vort/train_x_{args.nx}_{args.ny}_{args.num_train}_{args.num_init}.csv'
-    trainy_file = f'../data/NS_vort/train_y_{args.nx}_{args.ny}_{args.num_train}_{args.num_init}.csv'
-    testx_file = f'../data/NS_vort/test_x_{args.nx}_{args.ny}_{args.num_test}_{args.num_init}.csv'
-    testy_file = f'../data/NS_vort/test_y_{args.nx}_{args.ny}_{args.num_test}_{args.num_init}.csv'
+    trainx_file = f'../data/NS_vort/train_x_{args.nx}_{args.ny}_{args.num_train}_{args.num_init}_{args.num_obs}.csv'
+    trainy_file = f'../data/NS_vort/train_y_{args.nx}_{args.ny}_{args.num_train}_{args.num_init}_{args.num_obs}.csv'
+    testx_file = f'../data/NS_vort/test_x_{args.nx}_{args.ny}_{args.num_test}_{args.num_init}_{args.num_obs}.csv'
+    testy_file = f'../data/NS_vort/test_y_{args.nx}_{args.ny}_{args.num_test}_{args.num_init}_{args.num_obs}.csv'
     if not os.path.exists(trainx_file):
         print("Creating Dataset")
         input, output, init = generate_dataset(args.num_train + args.num_test, args.num_init, args.time_step, args.nx, args.ny)
@@ -616,22 +618,23 @@ if __name__ == "__main__":
         return x_norm
 
     # Normalize each sample
-    train_x_raw = torch.stack([normalize_to_range(sample) for sample in train_x_raw])
-    train_y_raw = torch.stack([normalize_to_range(sample) for sample in train_y_raw])
-    test_x_raw = torch.stack([normalize_to_range(sample) for sample in test_x_raw])
-    test_y_raw = torch.stack([normalize_to_range(sample) for sample in test_y_raw])
+    # train_x_raw = torch.stack([normalize_to_range(sample) for sample in train_x_raw])
+    # train_y_raw = torch.stack([normalize_to_range(sample) for sample in train_y_raw])
+    # test_x_raw = torch.stack([normalize_to_range(sample) for sample in test_x_raw])
+    # test_y_raw = torch.stack([normalize_to_range(sample) for sample in test_y_raw])
+    # init = [normalize_to_range(torch.tensor(sample)) for sample in init]
     plot_single(train_x_raw[0].reshape(args.nx, args.ny), f'../plot/NS_plot/input.png')
     plot_single(train_x_raw[-1].reshape(args.nx, args.ny), f'../plot/NS_plot/output.png')
 
 
     # Randomly sample indices for train and test sets
-    train_indices = np.random.choice(len(train_x_raw), args.num_train, replace=False)
-    test_indices = np.random.choice(len(test_y_raw), args.num_test, replace=False)
-    # Create subsets of the datasets
+    # train_indices = np.random.choice(len(train_x_raw), args.num_train, replace=False)
+    # test_indices = np.random.choice(len(test_y_raw), args.num_test, replace=False)
+    # # Create subsets of the datasets
     train_dataset = CustomDataset(train_x_raw, train_y_raw)
     test_dataset = CustomDataset(test_x_raw, test_y_raw)
-    train_dataset = Subset(train_dataset, train_indices)
-    test_dataset = Subset(test_dataset, test_indices)
+    # train_dataset = Subset(train_dataset, train_indices)
+    # test_dataset = Subset(test_dataset, test_indices)
     # Create DataLoaders
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
@@ -640,8 +643,9 @@ if __name__ == "__main__":
 
     # compute FIM eigenvector
     if args.loss_type == "JAC":
-        csv_filename = f'../data/NS_vort/largest_eigvec_NS_{args.nx}_{args.num_train}.csv'
+        csv_filename = f'../data/NS_vort/largest_eigvec_NS_{args.nx}_{args.num_train}_{args.num_obs}.csv'
         if os.path.exists(csv_filename):
+            print("Loading largest eigenvector")
             largest_eigenvector = pd.read_csv(csv_filename).values
             largest_eigenvector = torch.tensor(largest_eigenvector)
         else:
@@ -650,21 +654,45 @@ if __name__ == "__main__":
             noise_std = 1.
             print("Reloaded train: ", train_x_raw[0].shape)
             # Compute FIM
+            init_iter = int((args.num_train + args.num_test)/args.num_init)
+            init_index = 0
+            input_param = init[init_index]
             for s in range(args.num_train):
-                print(s)
+                print(s, init_index)
+                if s == 0:
+                    print("s", train_x_raw[s])
+                    print("init", init[init_index])
+                    # save gradient 
+                    grad_vorticity_x = np.gradient(input_param, axis=0)
+                    grad_vorticity_y = np.gradient(input_param, axis=1)
+                    mag_vorticity = np.sqrt(grad_vorticity_x**2 + grad_vorticity_y**2)
+                    plot_single(mag_vorticity, f'../plot/NS_plot/init_grad_{s}.png', "Purples")
                 # should be changed to initial state.
-                fim = compute_fim_NS(ns_solver, train_x_raw[s], train_y_raw[s], noise_std, nx, ny, forcing, args.time_step, Re, num_observations=args.num_obs).detach().cpu()
+                if (s % (init_iter) == 0) and (s != 0):
+                    init_index += 1
+                    input_param = init[init_index]
+                    # save gradient 
+                    grad_vorticity_x = np.gradient(input_param, axis=0)
+                    grad_vorticity_y = np.gradient(input_param, axis=1)
+                    mag_vorticity = np.sqrt(grad_vorticity_x**2 + grad_vorticity_y**2)
+                    plot_single(mag_vorticity, f'../plot/NS_plot/init_grad_{s}.png', "Purples")
+                    print("s-1", train_x_raw[s-1])
+                    print("s", train_x_raw[s])
+                    print("s+1", train_x_raw[s+1])
+                    print("init", init[init_index])
+                    
+                fim = compute_fim_NS(ns_solver, input_param, train_y_raw[s], noise_std, nx, ny, forcing, args.time_step, Re, init_index, s, num_observations=args.num_obs).detach().cpu()
                 # Analyze the FIM
                 eigenvalues, eigenvec = torch.linalg.eigh(fim.cuda())
                 largest_eigenvector.append(eigenvec[0].detach().cpu())
                 if s < 30:
                     print("eigval: ", eigenvalues)
                     print("shape", train_x_raw[s].shape)
-                    plot_single(train_x_raw[s].detach().cpu(), f'../plot/NS_plot/FIM/{args.num_obs}_state_{s}.png')
-                    plot_single(eigenvec[0].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/{args.num_obs}_eigenvec0_{s}.png')
-                    plot_single(eigenvec[1].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/{args.num_obs}_eigenvec1_{s}.png')
-                    plot_single(eigenvec[2].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/{args.num_obs}_eigenvec2_{s}.png')
-                    plot_single(eigenvalues.detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/{args.num_obs}_eigenvalues_{s}.png')
+                    plot_single(train_x_raw[s].detach().cpu(), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_state_{s}.png', "Purples")
+                    plot_single(eigenvec[0].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec0_{s}.png', "Purples")
+                    plot_single(eigenvec[1].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec1_{s}.png', "Purples")
+                    plot_single(eigenvec[2].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec2_{s}.png', "Purples")
+                    plot_single(eigenvalues.detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvalues_{s}.png', "Purples")
             largest_eigenvector = torch.stack(largest_eigenvector)
             pd.DataFrame(largest_eigenvector.numpy()).to_csv(csv_filename, index=False)
             print(f"Data saved to {csv_filename}")
@@ -705,5 +733,7 @@ if __name__ == "__main__":
         largest_eigenvector = largest_eigenvector.reshape(-1, args.nx, args.ny)
     else:
         largest_eigenvector = None
+    for data in enumerate(train_loader):
+        print("from loader", data)
     # train
     main(logger, args, args.loss_type, train_loader, test_loader, largest_eigenvector, ns_solver)
