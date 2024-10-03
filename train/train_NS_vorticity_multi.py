@@ -45,29 +45,9 @@ class Timer:
 
 
 ### Dataset ###
-def save_trajectory_as_single_plot(data, save_file='trajectory.png', cols=6):
-    num = data.shape[0]  # Number of frames
-    rows = int(np.ceil(num / cols))  # Determine the number of rows needed
-    
-    fig, axes = plt.subplots(rows, cols, figsize=(15, 3 * rows))
-    axes = axes.flatten()  # Flatten to easily iterate over
 
-    for i in range(num):
-        axes[i].imshow(data[i], cmap='viridis')
-        axes[i].set_title(f"Time Step {i}")
-        axes[i].axis('off')  # Turn off axis for cleaner look
-
-    # Turn off any unused axes (if num is not a perfect multiple of cols)
-    for i in range(num, len(axes)):
-        axes[i].axis('off')
-
-    plt.tight_layout()
-    plt.savefig(save_file)  # Save the plot as one image file
-    plt.close()  # Close the plot to avoid showing it
-    return
-
-def generate_dataset(num_samples, num_init, time_step, nx=50, ny=50):
-    input, output, init = [], [], []
+def generate_dataset(num_samples, args, num_init, time_step, Re, forcing, nx=50, ny=50):
+    input, output, init, largest_eigenvector = [], [], [], []
 
     L1, L2 = 2*math.pi, 2*math.pi  # Domain size
     Re = 1000  # Reynolds number
@@ -82,6 +62,7 @@ def generate_dataset(num_samples, num_init, time_step, nx=50, ny=50):
     num_iter = int(num_samples/num_init)
     print("num_init: ", num_init)
     print("time step: ", num_iter)
+    
     for s in range(num_init):
         print("gen data for init: ", s)
         
@@ -89,23 +70,35 @@ def generate_dataset(num_samples, num_init, time_step, nx=50, ny=50):
         random_seed=42 + s
         w = gaussian_random_field_2d((nx, ny), 20, random_seed)
         init.append(w)
-        w_current = w.cuda()
-        vorticity_data = [w_current.cpu().numpy()]
+        w = w.cuda().requires_grad_()
+        w_current = w
+        vorticity_data = [w_current]
 
         # Solve the NS
         for i in range(num_iter):
-            w_current = ns_solver(w_current, f=forcing, T=time_step, Re=Re)
-            vorticity_data.append(w_current.cpu().numpy())
+            print("time: ", i)
+            w_next = ns_solver(w_current, f=forcing, T=time_step, Re=Re)
+            vorticity_data.append(w_next)
+            w_current = w_next
+            # Compute FIM_multi
+            fim = compute_fim_NS(ns_solver, w, w_next, 1., args.nx, args.ny, forcing, args.time_step, Re, s, "multi", num_observations=args.num_obs).detach().cpu()
+            eigenvalues, eigenvec = torch.linalg.eigh(fim.cuda())
+            largest_eigenvector.append(eigenvec[0].detach().cpu())
+
+            if ((s == 0) or (s == 1)) and (i < 25):
+                print("eigval: ", eigenvalues)
+                if i == 0:
+                    plot_single(vorticity_data[0].detach().cpu(), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_init_state_{s}.png', "viridis")
+                plot_single(eigenvec[0].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec0_{s}_{i}.png', "viridis")
+                plot_single(eigenvec[1].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec1_{s}_{i}.png', "viridis")
+                plot_single(eigenvec[2].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec2_{s}_{i}.png', "viridis")
+                plot_single(eigenvalues.detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvalues_{s}_{i}.png', "viridis")
+            
         
         input.append(vorticity_data[:-1])
         output.append(vorticity_data[1:])
-        if (s == 0 or s == 1):
-            save_trajectory_as_single_plot(torch.tensor(vorticity_data[:-1]), save_file=f'../plot/NS_plot/{args.num_obs}/trajx_{s}.png', cols=6)
-            save_trajectory_as_single_plot(torch.tensor(vorticity_data[1:]), save_file=f'../plot/NS_plot/{args.num_obs}/trajy_{s}.png', cols=6)
 
-
-        
-    return input, output, init
+    return input, output, init, largest_eigenvector
 
 
 
@@ -191,255 +184,39 @@ def load_dataset_from_csv(prefix, nx, ny):
     return data
 
 def log_likelihood(data, model_output, noise_std):
-    # return -0.5 * torch.sum((data - model_output)**2) / (noise_std**2) - \
-    #     data.numel() * torch.log(torch.tensor(noise_std))
     return (1/(2*noise_std**2))*torch.sum((data - model_output)**2)
 
-# def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_step, Re, input_index, s, init_iter, num_observations):
-#     '''
-#     s: index of training data
-#     T_data index: [1, ... , 43]
-#     '''
-#     # Ensure k is a tensor with gradient tracking
-#     input = input.requires_grad_().cuda()
-#     q = input
-#     fim = torch.zeros((nx*ny, nx*ny))
-
-#     # T_pred: Computational Graph
-#     time_step = s-init_index*init_iter
-#     print("input_index:", input_index, "recursive:", time_step)
-#     for _ in range(time_step+1):
-#         T_pred = simulator(q, f=forcing, T=time_step, Re=Re)
-#         if input_index == 0 and time_step == 0:
-#             print("input", q)
-#             print("output", T_pred)
-#             print("equal", torch.equal(q, T_pred))
-#         q = T_pred
-
-#     # Generate isotrophic gaussian noise
-#     for j in range(num_observations):
-#         normal = torch.randn(nx, ny)
-#         gaussian_noise = noise_std * normal
-#         T_diff_obs = T_pred + gaussian_noise.cuda()
-#         ll = log_likelihood(T_data.cuda(), T_diff_obs, noise_std)
-#         flat_Jacobian = torch.autograd.grad(inputs=input, outputs=ll, create_graph=True)[0].flatten().detach().cpu() # 50 by 50 -> [2500]
-#         flat_Jacobian = flat_Jacobian.reshape(1, -1)
-#         fim += torch.matmul(flat_Jacobian.T, flat_Jacobian)
-#         if (j == 9) or (j == 99):
-#             plot_single(fim, f"../plot/NS_plot/{num_observations}/fim_{input_index}_{j}_t={s}.png", "viridis")
-#             plot_single(fim[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_{j}_t={s}.png", "viridis")
-#             plot_single(fim[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_{j}_t={s}.png", "viridis")
-
-
-#     return fim
-
-# def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_step, Re, input_index, s, init_iter, num_observations):
-#     input = input.requires_grad_().cuda()
-#     fim = torch.zeros((nx*ny, nx*ny), device='cuda')
-
-#     # Pre-compute T_pred
-#     time_step = s - init_index * init_iter
-#     q = input
-#     for _ in range(time_step + 1):
-#         T_pred = simulator(q, f=forcing, T=time_step, Re=Re)
-#         q = T_pred
-
-#     # Generate isotrophic gaussian noise once
-#     normal = torch.randn(num_observations, nx, ny, device='cuda')
-#     gaussian_noise = noise_std * normal
-
-#     # Vectorize operations
-#     T_diff_obs = T_pred.unsqueeze(0) + gaussian_noise
-#     ll = log_likelihood(T_data.cuda().unsqueeze(0), T_diff_obs, noise_std)
-
-#     # Compute Jacobian for all observations at once
-#     flat_Jacobian = torch.autograd.functional.jacobian(
-#         lambda x: log_likelihood(T_data.cuda().unsqueeze(0), simulator(x, f=forcing, T=time_step, Re=Re).unsqueeze(0) + gaussian_noise, noise_std),
-#         input
-#     )
-
-#     # Compute FIM
-#     print("flat_Jacobian", flat_Jacobian.shape)
-#     flat_Jacobian = flat_Jacobian.flatten()
-#     flat_Jacobian = flat_Jacobian.reshape(1, -1)
-#     fim = torch.matmul(flat_Jacobian.T, flat_Jacobian)
-#     print("fim", fim.shape)
-
-#     # Plot at specific iterations if needed
-#     if num_observations >= 10:
-#         fim = fim.detach().cpu()
-#         plot_single(fim, f"../plot/NS_plot/{num_observations}/fim_{input_index}_9_t={s}.png", "viridis")
-#         plot_single(fim[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_9_t={s}.png", "viridis")
-#         plot_single(fim[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_9_t={s}.png", "viridis")
-    
-#     if num_observations >= 100:
-#         fim = fim.detach().cpu()
-#         plot_single(fim, f"../plot/NS_plot/{num_observations}/fim_{input_index}_99_t={s}.png", "viridis")
-#         plot_single(fim[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_99_t={s}.png", "viridis")
-#         plot_single(fim[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_99_t={s}.png", "viridis")
-
-#     return fim
-
-# def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_step, Re, input_index, s, init_iter, num_observations):
-#     input = input.requires_grad_().cuda()
-#     q = input
-#     fim = torch.zeros((nx*ny, nx*ny), device='cuda')
-
-#     # T_pred: Computational Graph
-#     time_step = s - init_iter * init_iter
-#     print("input_index:", input_index, "recursive:", time_step)
-#     for _ in range(time_step + 1):
-#         T_pred = simulator(q, f=forcing, T=time_step, Re=Re)
-#         if input_index == 0 and time_step == 0:
-#             print("input", q)
-#             print("output", T_pred)
-#         q = T_pred
-
-#     # Prepare for vectorized operations
-#     T_pred_expanded = T_pred.unsqueeze(0).expand(num_observations, -1, -1)
-#     T_data_expanded = T_data.cuda().unsqueeze(0).expand(num_observations, -1, -1)
-
-#     # Generate isotrophic gaussian noise for all observations at once
-#     normal = torch.randn(num_observations, nx, ny, device='cuda')
-#     gaussian_noise = noise_std * normal
-
-#     # Compute perturbed matrices for all observations
-#     T_diff_obs = T_pred_expanded + gaussian_noise
-
-#     # Compute log-likelihood for all observations
-#     ll = log_likelihood(T_data_expanded, T_diff_obs, noise_std)
-
-#     # Compute gradients for all observations at once
-#     grads = torch.autograd.grad(ll.sum(), input, create_graph=True)[0]
-    
-#     # Compute FIM
-#     flat_grads = grads.view(num_observations, -1)
-#     fim = torch.matmul(flat_grads.T, flat_grads)
-
-#     # Plot at specific iterations if needed
-#     if num_observations >= 10:
-#         plot_single(fim, f"../plot/NS_plot/{num_observations}/fim_{input_index}_9_t={s}.png", "viridis")
-#         plot_single(fim[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_9_t={s}.png", "viridis")
-#         plot_single(fim[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_9_t={s}.png", "viridis")
-    
-#     if num_observations >= 100:
-#         plot_single(fim, f"../plot/NS_plot/{num_observations}/fim_{input_index}_99_t={s}.png", "viridis")
-#         plot_single(fim[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_99_t={s}.png", "viridis")
-#         plot_single(fim[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_99_t={s}.png", "viridis")
-
-#     return fim
-
-'''def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_step, Re, input_index, s, init_iter, num_observations):
-    input = input.requires_grad_().cuda()
-    fim = torch.zeros((nx*ny, nx*ny), device='cuda')
-
-    # Pre-compute T_pred
-    time_step = s - init_index * init_iter
-    q = input
-    for _ in range(time_step + 1):
-        T_pred = simulator(q, f=forcing, T=time_step, Re=Re)
-        # if input_index == 0 and time_step == 0:
-            # print("input", q)
-            # print("output", T_pred)
-            # print("True?", torch.equal(q, T_pred))
-        q = T_pred
-
-    # Generate isotrophic gaussian noise once
-    normal = torch.randn(num_observations, nx, ny, device='cuda')
-    gaussian_noise = noise_std * normal
-    # Perturbed observations, {Y}_{i=1}^M
-    T_diff_obs = T_pred.expand(num_observations, -1, -1) + gaussian_noise
-    input_vectorized = input.expand(num_observations, -1, -1)
-    ll = log_likelihood(T_data.cuda().unsqueeze(0), T_diff_obs, noise_std)
-
-    # Compute Jacobian for all observations at once
-    flat_Jacobian = torch.autograd.functional.jacobian(
-        lambda x: log_likelihood(T_data.cuda().unsqueeze(0), simulator(x, f=forcing, T=time_step, Re=Re).unsqueeze(0) + gaussian_noise, noise_std),
-        input
-    )
-    f = lambda x: log_likelihood(simulator(x, f=forcing, T=time_step, Re=Re))
-    single_diff = torch.vmap(torch.func.jacrev(f))
-    True_J = single_diff(input)
-    # flat_Jacobian = torch.autograd.functional.jacobian(
-    #     lambda x: log_likelihood(T_data.cuda().unsqueeze(0), simulator(x, f=forcing, T=time_step, Re=Re).unsqueeze(0) + gaussian_noise, noise_std),
-    #     input
-    # )
-    # flat_Jacobian = torch.autograd.functional.jacobian(
-    #     lambda x: log_likelihood(T_diff_obs.cuda(), T_pred_expanded, noise_std),
-    #     input
-    # )
-
-    # Compute FIM
-    print("flat_Jacobian", flat_Jacobian.shape)
-    flat_Jacobian = flat_Jacobian.flatten()
-    flat_Jacobian = flat_Jacobian.reshape(1, -1)
-    fim = torch.matmul(flat_Jacobian.T, flat_Jacobian)
-    print("fim", fim.shape)
-
-    # Plot at specific iterations if needed
-    if num_observations >= 10:
-        fim = fim.detach().cpu()
-        plot_single(fim, f"../plot/NS_plot/{num_observations}/fim_{input_index}_9_t={s}.png", "viridis")
-        plot_single(fim[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_9_t={s}.png", "viridis")
-        plot_single(fim[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_9_t={s}.png", "viridis")
-    
-    if num_observations >= 100:
-        fim = fim.detach().cpu()
-        plot_single(fim, f"../plot/NS_plot/{num_observations}/fim_{input_index}_99_t={s}.png", "viridis")
-        plot_single(fim[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_99_t={s}.png", "viridis")
-        plot_single(fim[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_99_t={s}.png", "viridis")
-
-    return fim'''
-
-def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_step, Re, input_index, s, init_iter, num_observations):
-    input = input.requires_grad_().cuda()
-    fim = torch.zeros((nx*ny, nx*ny), device='cuda')
-
-    # Pre-compute time_step
-    time_step = s - init_index * init_iter
+def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_step, Re, input_index, s, num_observations):
+    '''
+    s: index of training data
+    T_data index: [1, ... , 43]
+    '''
+    # Ensure k is a tensor with gradient tracking
+    fim = torch.zeros((nx*ny, nx*ny))
 
     # Generate isotrophic gaussian noise
-    noise = torch.randn(num_observations, nx, ny, device='cuda') * noise_std
+    for j in range(num_observations):
+        # print("T_data shape", T_data.shape) [44, 64, 64]
+        normal = torch.randn(nx, ny)
+        gaussian_noise = noise_std * normal
+        # T_pred = simulator(q, f=forcing, T=time_step, Re=Re)
+        T_pred = T_data + gaussian_noise.cuda()
+        ll = log_likelihood(T_data.cuda(), T_pred, noise_std)
+        flat_Jacobian = torch.autograd.grad(inputs=input, outputs=ll, create_graph=True)[0].flatten() # 50 by 50 -> [2500]
+        flat_Jacobian = flat_Jacobian.reshape(1, -1)
+        fim += torch.matmul(flat_Jacobian.T, flat_Jacobian).detach().cpu()
+        if (j == 9) or (j == 49) or (j == 99):
+            plot_single(fim, f"../plot/NS_plot/{num_observations}/fim_{input_index}_{j}_t={s}.png", "viridis")
+            plot_single(fim[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_{j}_t={s}.png", "viridis")
+            plot_single(fim[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_{j}_t={s}.png", "viridis")
 
-    # Define the log-likelihood function
-    def log_likelihood(x, single_noise):
-        T_pred = simulator(x, f=forcing, T=time_step, Re=Re)
-        T_diff_obs = T_pred + single_noise
-        return -0.5 * torch.sum((T_data.cuda() - T_diff_obs)**2) / (noise_std**2)
-
-    # Compute Jacobian for all observations at once using vmap and jacrev
-    f = lambda x, noise: log_likelihood(x, noise)
-    single_diff = torch.vmap(torch.func.jacrev(f, argnums=0), in_dims=(None, 0))
-    jacobians = single_diff(input, noise)
-
-    # Compute FIM
-    print("jacobians shape:", jacobians.shape) #[num_observations, 64, 64]
-    flat_jacobians = jacobians.reshape(num_observations, -1)
-    print("flat_jacobians", flat_jacobians.shape) #[num_observations, 4096]
-
-    fim = torch.matmul(flat_jacobians.T, flat_jacobians)
-    print("fim shape:", fim.shape)
-
-    # Plot at specific iterations if needed
-    if num_observations >= 10:
-        fim_cpu = fim.detach().cpu()
-        plot_single(fim_cpu, f"../plot/NS_plot/{num_observations}/fim_{input_index}_9_t={s}.png", "viridis")
-        plot_single(fim_cpu[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_9_t={s}.png", "viridis")
-        plot_single(fim_cpu[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_9_t={s}.png", "viridis")
-    
-    if num_observations >= 100:
-        fim_cpu = fim.detach().cpu()
-        plot_single(fim_cpu, f"../plot/NS_plot/{num_observations}/fim_{input_index}_99_t={s}.png", "viridis")
-        plot_single(fim_cpu[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_99_t={s}.png", "viridis")
-        plot_single(fim_cpu[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_9_t={s}.png", "viridis")
 
     return fim
-
 
 def plot_loss_checkpoint(epoch, loss_type, mse_diff, test_diff, jac_diff_list=None):
     # Create loss plot
     print("Create loss plot")
-    if epoch < 510:
+    if epoch < 310:
         mse_diff = np.asarray(mse_diff)
         jac_diff_list = np.asarray(jac_diff_list)
         test_diff = np.asarray(test_diff)
@@ -450,6 +227,7 @@ def plot_loss_checkpoint(epoch, loss_type, mse_diff, test_diff, jac_diff_list=No
         jac_diff_list = jac_diff_list[start_epoch:]  # Only if JAC is relevant
 
     path = f"../plot/Loss/checkpoint/FNO_NS_vort_{loss_type}_{epoch}.png"
+    jac_path = f"../plot/Loss/checkpoint/FNO_NS_vort_{loss_type}_{epoch}_jac.png"
     epochs = np.arange(len(mse_diff))
 
     fig, ax = plt.subplots()
@@ -459,10 +237,22 @@ def plot_loss_checkpoint(epoch, loss_type, mse_diff, test_diff, jac_diff_list=No
         ax.plot(epochs, jac_diff_list, "P-", lw=1.0, color="black", ms=4.0, label=r"$\|J^Tv - \hat{J}^Tv\|$")
     ax.set_xlabel("Epochs",fontsize=24)
     ax.set_ylabel("Loss", fontsize=24)
-    ax.set_yscale('log')
     ax.legend()
     ax.grid(True)
     plt.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+    if args.loss_type == "JAC":
+        fig, ax = plt.subplots()
+        ax.plot(epochs, jac_diff_list, "P-", lw=1.0, color="black", ms=4.0, label=r"$\|J^Tv - \hat{J}^Tv\|$")
+        ax.set_xlabel("Epochs",fontsize=24)
+        ax.set_ylabel("Loss", fontsize=24)
+        ax.legend()
+        ax.grid(True)
+        plt.savefig(jac_path, dpi=150, bbox_inches="tight")
+        plt.close()
+
+
     return
 
 ### Compute Metric ###
@@ -777,11 +567,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=1000)
-    parser.add_argument("--num_train", type=int, default=1000) #8000
+    parser.add_argument("--num_epoch", type=int, default=2000)
+    parser.add_argument("--num_train", type=int, default=2000) #8000
     parser.add_argument("--num_test", type=int, default=200)
-    parser.add_argument("--num_sample", type=int, default=1000) #8000
-    parser.add_argument("--num_init", type=int, default=100)
+    parser.add_argument("--num_sample", type=int, default=2000) #8000
+    parser.add_argument("--num_init", type=int, default=50)
     parser.add_argument("--threshold", type=float, default=1e-8)
     parser.add_argument("--batch_size", type=int, default=100)
     parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
@@ -789,8 +579,8 @@ if __name__ == "__main__":
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
     parser.add_argument("--reg_param", type=float, default=200.0)
-    parser.add_argument("--nu", type=float, default=0.01) # Viscosity
-    parser.add_argument("--time_step", type=float, default=0.1) # time step
+    parser.add_argument("--nu", type=float, default=0.001) # Viscosity
+    parser.add_argument("--time_step", type=float, default=0.05) # time step
     parser.add_argument("--num_obs", type=float, default=10) # time step
 
     args = parser.parse_args()
@@ -820,7 +610,7 @@ if __name__ == "__main__":
     testy_file = f'../data/NS_vort/test_y_{args.nx}_{args.ny}_{args.num_test}_{args.num_init}_{args.num_obs}.csv'
     if not os.path.exists(trainx_file):
         print("Creating Dataset")
-        input, output, init = generate_dataset(args.num_train + args.num_test, args.num_init, args.time_step, args.nx, args.ny)
+        input, output, init, largest_eigenvector = generate_dataset(args.num_train + args.num_test, args, args.num_init, args.time_step, Re, forcing, args.nx, args.ny)
         input = torch.tensor(input).reshape(-1, args.nx*args.ny)
         output = torch.tensor(output).reshape(-1, args.nx*args.ny)
         print("data size", len(input), len(output))
@@ -862,9 +652,15 @@ if __name__ == "__main__":
     plot_single(train_x_raw[0].reshape(args.nx, args.ny), f'../plot/NS_plot/input.png')
     plot_single(train_x_raw[-1].reshape(args.nx, args.ny), f'../plot/NS_plot/output.png')
 
+
+    # Randomly sample indices for train and test sets
+    # train_indices = np.random.choice(len(train_x_raw), args.num_train, replace=False)
+    # test_indices = np.random.choice(len(test_y_raw), args.num_test, replace=False)
     # # Create subsets of the datasets
     train_dataset = CustomDataset(train_x_raw, train_y_raw)
     test_dataset = CustomDataset(test_x_raw, test_y_raw)
+    # train_dataset = Subset(train_dataset, train_indices)
+    # test_dataset = Subset(test_dataset, test_indices)
     # Create DataLoaders
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
@@ -873,61 +669,90 @@ if __name__ == "__main__":
 
     # compute FIM eigenvector
     if args.loss_type == "JAC":
-        csv_filename = f'../data/NS_vort/eigvec/largest_eigvec_NS_{args.nx}_{args.num_train}_{args.num_obs}.csv'
+        csv_filename = f'../data/NS_vort/largest_eigvec_NS_{args.nx}_{args.num_train}_{args.num_obs}.csv'
         if os.path.exists(csv_filename):
             print("Loading largest eigenvector")
             largest_eigenvector = pd.read_csv(csv_filename).values
             largest_eigenvector = torch.tensor(largest_eigenvector)
         else:
             largest_eigenvector = []
-            nx, ny = args.nx, args.ny
-            noise_std = 1.
             print("Reloaded train: ", train_x_raw[0].shape)
-            # Compute FIM
-            init_iter = int((args.num_train + args.num_test)/args.num_init)
-            init_index = 0
-            input_param = init[init_index]
-            for s in range(args.num_train):
-                print("train index:", s, "init_index", init_index)
-                if s == 0:
-                    print("s", train_x_raw[s])
-                    print("init", init[init_index])
-                    # save gradient 
-                    grad_vorticity_x = np.gradient(input_param, axis=0)
-                    grad_vorticity_y = np.gradient(input_param, axis=1)
-                    mag_vorticity = np.sqrt(grad_vorticity_x**2 + grad_vorticity_y**2)
-                    plot_single(mag_vorticity, f'../plot/NS_plot/init_grad_{s}.png', "Purples")
-                # should be changed to initial state.
-                if (s % (init_iter) == 0) and (s != 0):
-                    init_index += 1
-                    input_param = init[init_index]
-                    # save gradient 
-                    grad_vorticity_x = np.gradient(input_param, axis=0)
-                    grad_vorticity_y = np.gradient(input_param, axis=1)
-                    mag_vorticity = np.sqrt(grad_vorticity_x**2 + grad_vorticity_y**2)
-                    plot_single(mag_vorticity, f'../plot/NS_plot/init_grad_{s}.png', "Purples")
-                    print("s-1", train_x_raw[s-1])
-                    print("s", train_x_raw[s])
-                    print("s+1", train_x_raw[s+1])
-                    print("init", init[init_index])
+            # # Compute FIM
+            # init_iter = int((args.num_train + args.num_test)/args.num_init)
+            # init_index = 0
+            # input_param = init[init_index]
+            # for s in range(args.num_train, init_iter):
+            #     print(s, init_index)
+            #     if s == 0:
+            #         print("s", train_x_raw[s])
+            #         print("init", init[init_index])
+            #         # save gradient 
+            #         grad_vorticity_x = np.gradient(input_param, axis=0)
+            #         grad_vorticity_y = np.gradient(input_param, axis=1)
+            #         mag_vorticity = np.sqrt(grad_vorticity_x**2 + grad_vorticity_y**2)
+            #         plot_single(mag_vorticity, f'../plot/NS_plot/FIM/num_obs={args.num_obs}/init_grad_{s}.png', "Purples")
+            #     # should be changed to initial state.
+            #     if (s % (init_iter) == 0) and (s != 0):
+            #         init_index += 1
+            #         input_param = init[init_index]
+            #         # save gradient 
+            #         grad_vorticity_x = np.gradient(input_param, axis=0)
+            #         grad_vorticity_y = np.gradient(input_param, axis=1)
+            #         mag_vorticity = np.sqrt(grad_vorticity_x**2 + grad_vorticity_y**2)
+            #         plot_single(mag_vorticity, f'../plot/NS_plot/FIM/num_obs={args.num_obs}/init_grad_{s}.png', "Purples")
+            #         print("s-1", train_x_raw[s-1])
+            #         print("s", train_x_raw[s])
+            #         print("s+1", train_x_raw[s+1])
+            #         print("init", init[init_index])
                     
-                # give single output
-                fim = compute_fim_NS(ns_solver, input_param, train_y_raw[s], noise_std, nx, ny, forcing, args.time_step, Re, init_index, s, init_iter, num_observations=args.num_obs).detach().cpu()
-                # Analyze the FIM
-                eigenvalues, eigenvec = torch.linalg.eigh(fim.cuda())
-                largest_eigenvector.append(eigenvec[0].detach().cpu())
-                if s < 30:
-                    print("eigval: ", eigenvalues)
-                    plot_single(train_x_raw[s].detach().cpu(), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_state_{s}.png', "Purples")
-                    plot_single(eigenvec[0].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec0_{s}.png', "Purples")
-                    plot_single(eigenvec[1].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec1_{s}.png', "Purples")
-                    plot_single(eigenvec[2].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec2_{s}.png', "Purples")
-                    plot_single(eigenvalues.detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvalues_{s}.png', "Purples")
+            #     fim = compute_fim_NS(ns_solver, input_param, train_y_raw[s:s+init_iter], noise_std, nx, ny, forcing, args.time_step, Re, init_index, s, num_observations=args.num_obs).detach().cpu()
+            #     # Analyze the FIM
+            # eigenvalues, eigenvec = torch.linalg.eigh(fim.cuda())
+            # largest_eigenvector.append(eigenvec[0].detach().cpu())
+            # if s < 30:
+            #     print("eigval: ", eigenvalues)
+            #     print("shape", train_x_raw[s].shape)
+            #     plot_single(train_x_raw[s].detach().cpu(), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_state_{s}.png', "Purples")
+            #     plot_single(eigenvec[0].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec0_{s}.png', "Purples")
+            #     plot_single(eigenvec[1].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec1_{s}.png', "Purples")
+            #     plot_single(eigenvec[2].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec2_{s}.png', "Purples")
+            #     plot_single(eigenvalues.detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvalues_{s}.png', "Purples")
             largest_eigenvector = torch.stack(largest_eigenvector)
             pd.DataFrame(largest_eigenvector.numpy()).to_csv(csv_filename, index=False)
             print(f"Data saved to {csv_filename}")
+                
+        # print("shape", eigenvalues.shape, eigenvec.shape) -> torch.Size([2500]) torch.Size([2500, 2500])
+        # Get the eigenvector corresponding to the largest eigenvalue
+        # Assuming eigenvalues and eigenvectors are already computed
+        # eigenvalues: A tensor of eigenvalues
+        # eigenvec: A matrix where each column corresponds to an eigenvector
 
+        # # Sort eigenvalues in descending order and get their indices
+        # sorted_indices = torch.argsort(eigenvalues, descending=True)
 
+        # # Iterate over sorted eigenvalues to find the largest one with a non-zero eigenvector
+        # largest_eigenvector = None
+        # for idx in sorted_indices:
+        #     print("candidate idx", idx)
+        #     candidate_eigenvector = eigenvec[:, idx]
+            
+        #     # Check if the eigenvector is non-zero
+        #     if torch.any(candidate_eigenvector != 0):
+        #         largest_eigenvector = candidate_eigenvector
+        #         break
+        # # Handle the case where no non-zero eigenvector is found
+        # if largest_eigenvector is None:
+        #     raise ValueError("No non-zero eigenvector found.")
+
+        # # idx = torch.argmax(eigenvalues)
+        # # largest_eigenvector = eigenvec[:, idx]
+        # largest_eigenvector = largest_eigenvector.reshape(args.nx, args.ny)
+
+        # print("Largest Eigenvalue and index:", eigenvalues[idx], idx)
+        # print("Corresponding Eigenvector:", largest_eigenvector)
+        # print("Eigenvector shape", largest_eigenvector.shape)
+        # print("eigenvalue: ", eigenvalues)
+        # print("eigenvector: ", eigenvec)
         print("largest eigenvector shape: ", largest_eigenvector.shape)
         largest_eigenvector = largest_eigenvector.reshape(-1, args.nx, args.ny)
     else:
