@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
 from functorch import vjp, vmap
 from torch.utils.data import Subset
+import matplotlib.colors as colors
 
 import sys
 sys.path.append('../test')
@@ -104,7 +105,6 @@ def generate_dataset(num_samples, num_init, time_step, nx=50, ny=50):
             save_trajectory_as_single_plot(torch.tensor(vorticity_data[1:]), save_file=f'../plot/NS_plot/{args.num_obs}/trajy_{s}.png', cols=6)
 
 
-        
     return input, output, init
 
 
@@ -754,17 +754,19 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
     return model
 
 
-def plot_single(true1, path, cmap="magma"):
+def plot_single(true1, path, cmap='Blues'):
     plt.figure(figsize=(10, 10))
     plt.rcParams.update({'font.size': 16})
 
-    plt.imshow(true1, cmap=cmap)
-    plt.colorbar(fraction=0.045, pad=0.06)
-    # plt.title('True Saturation')
+    # Create a centered normalization around 0
+    norm = colors.CenteredNorm()
+
+    # Apply the norm both to the image and the colorbar
+    ax = plt.imshow(true1, cmap=cmap, norm=norm)
+    plt.colorbar(ax, fraction=0.045, pad=0.06, norm=norm)
 
     plt.savefig(path, dpi=150, bbox_inches='tight')
     plt.close()
-
 
 if __name__ == "__main__":
     # Set device
@@ -777,21 +779,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=1000)
-    parser.add_argument("--num_train", type=int, default=1000) #8000
-    parser.add_argument("--num_test", type=int, default=200)
-    parser.add_argument("--num_sample", type=int, default=1000) #8000
-    parser.add_argument("--num_init", type=int, default=100)
+    parser.add_argument("--num_epoch", type=int, default=4000)
+    parser.add_argument("--num_train", type=int, default=600) #8000
+    parser.add_argument("--num_test", type=int, default=100)
+    parser.add_argument("--num_sample", type=int, default=600) #8000
+    parser.add_argument("--num_init", type=int, default=20)
     parser.add_argument("--threshold", type=float, default=1e-8)
     parser.add_argument("--batch_size", type=int, default=100)
     parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
-    parser.add_argument("--reg_param", type=float, default=200.0)
+    parser.add_argument("--reg_param", type=float, default=100.0)
     parser.add_argument("--nu", type=float, default=0.01) # Viscosity
-    parser.add_argument("--time_step", type=float, default=0.1) # time step
-    parser.add_argument("--num_obs", type=float, default=10) # time step
+    parser.add_argument("--time_step", type=float, default=0.05) # time step
+    parser.add_argument("--num_obs", type=float, default=100) # time step
 
     args = parser.parse_args()
 
