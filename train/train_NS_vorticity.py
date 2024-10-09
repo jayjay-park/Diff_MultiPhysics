@@ -108,43 +108,6 @@ def generate_dataset(num_samples, num_init, time_step, nx=50, ny=50):
     return input, output, init
 
 
-
-def save_plot(vx_init, vy_init, vx_final, vy_final, filename):
-    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    plt.rcParams.update({'font.size': 14})
-
-    # Plot vx field
-    im1 = axes[0, 0].imshow(vx_init.cpu().numpy(), cmap='RdBu')
-    axes[0, 0].set_title('Velocity Field vx')
-    axes[0, 0].invert_yaxis()
-    axes[0, 0].axis('off')
-    fig.colorbar(im1, ax=axes[0, 0], orientation='vertical')
-
-    # Plot vy field
-    im2 = axes[0, 1].imshow(vy_init.cpu().numpy(), cmap='RdBu')
-    axes[0, 1].set_title('Input Velocity Field vy')
-    axes[0, 1].invert_yaxis()
-    axes[0, 1].axis('off')
-    fig.colorbar(im2, ax=axes[0, 1], orientation='vertical')
-
-    # Plot input vorticity field
-    im3 = axes[1, 0].imshow(vx_final.cpu().numpy(), cmap='RdBu')
-    axes[1, 0].set_title('Output Velocity Field vx')
-    axes[1, 0].invert_yaxis()
-    axes[1, 0].axis('off')
-    fig.colorbar(im3, ax=axes[1, 0], orientation='vertical')
-
-    # Plot output vorticity field
-    im4 = axes[1, 1].imshow(vy_final.cpu().numpy(), cmap='RdBu')
-    axes[1, 1].set_title('Output Velocity Field vy')
-    axes[1, 1].invert_yaxis()
-    axes[1, 1].axis('off')
-    fig.colorbar(im4, ax=axes[1, 1], orientation='vertical')
-
-    plt.tight_layout()
-    plt.savefig(filename, dpi=300)
-    plt.close(fig)
-
 class NSDataset(torch.utils.data.Dataset):
     def __init__(self, data):
         self.data = data
@@ -191,8 +154,6 @@ def load_dataset_from_csv(prefix, nx, ny):
     return data
 
 def log_likelihood(data, model_output, noise_std):
-    # return -0.5 * torch.sum((data - model_output)**2) / (noise_std**2) - \
-    #     data.numel() * torch.log(torch.tensor(noise_std))
     return (1/(2*noise_std**2))*torch.sum((data - model_output)**2)
 
 # def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_step, Re, input_index, s, init_iter, num_observations):
@@ -393,18 +354,21 @@ def log_likelihood(data, model_output, noise_std):
 
 def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_step, Re, input_index, s, init_iter, num_observations):
     input = input.requires_grad_().cuda()
-    fim = torch.zeros((nx*ny, nx*ny), device='cuda')
+    fim = torch.zeros((nx*ny, nx*ny), device='cpu')
 
     # Pre-compute time_step
-    time_step = s - init_index * init_iter
+    current_ts = s - init_index * init_iter
 
     # Generate isotrophic gaussian noise
     noise = torch.randn(num_observations, nx, ny, device='cuda') * noise_std
 
     # Define the log-likelihood function
     def log_likelihood(x, single_noise):
-        T_pred = simulator(x, f=forcing, T=time_step, Re=Re)
-        T_diff_obs = T_pred + single_noise
+        # T_pred = simulator(x, f=forcing, T=time_step, Re=Re)
+        for i in range(current_ts):
+            next = ns_solver(x, f=forcing, T=time_step, Re=Re)
+            x = next
+        T_diff_obs = x + single_noise
         return -0.5 * torch.sum((T_data.cuda() - T_diff_obs)**2) / (noise_std**2)
 
     # Compute Jacobian for all observations at once using vmap and jacrev
@@ -415,10 +379,9 @@ def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_st
     # Compute FIM
     print("jacobians shape:", jacobians.shape) #[num_observations, 64, 64]
     flat_jacobians = jacobians.reshape(num_observations, -1)
-    print("flat_jacobians", flat_jacobians.shape) #[num_observations, 4096]
-
-    fim = torch.matmul(flat_jacobians.T, flat_jacobians)
-    print("fim shape:", fim.shape)
+    # print("flat_jacobians", flat_jacobians.shape) #[num_observations, 4096]
+    fim = torch.matmul(flat_jacobians.T.cpu(), flat_jacobians.cpu())
+    # print("fim shape:", fim.shape) [4096, 4096]
 
     # Plot at specific iterations if needed
     if num_observations >= 10:
@@ -432,6 +395,8 @@ def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_st
         plot_single(fim_cpu, f"../plot/NS_plot/{num_observations}/fim_{input_index}_99_t={s}.png", "viridis")
         plot_single(fim_cpu[:100,:100], f"../plot/NS_plot/{num_observations}/fim_sub_{input_index}_99_t={s}.png", "viridis")
         plot_single(fim_cpu[:,0].reshape(nx, ny), f"../plot/NS_plot/{num_observations}/fim_sub_reshape_{input_index}_9_t={s}.png", "viridis")
+    
+    torch.cuda.empty_cache()
 
     return fim
 
@@ -466,7 +431,6 @@ def plot_loss_checkpoint(epoch, loss_type, mse_diff, test_diff, jac_diff_list=No
     return
 
 ### Compute Metric ###
-# plot_results(Y_test[0,0].cpu(), Y_test[0,1].cpu(), Y_pred[0, 0], Y_pred[0, 1], plot_path)
 def plot_results(true1, true2, pred1, pred2, path):
     plt.figure(figsize=(15, 10))
     plt.rcParams.update({'font.size': 16})
@@ -507,29 +471,6 @@ def plot_results(true1, true2, pred1, pred2, path):
 
     plt.savefig(path, dpi=150, bbox_inches='tight')
     plt.close()
-
-
-def plot_data(k, q, T, path):
-    plt.rcParams.update({'font.size': 16})
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-
-    im0 = axes[0].imshow(k.squeeze().cpu(), cmap='viridis')
-    axes[0].set_title(r"Thermal Conductivity $k$")
-    fig.colorbar(im0, ax=axes[0], fraction=0.045, pad=0.06)
-    
-    im1 = axes[1].imshow(q.cpu(), cmap='inferno')
-    axes[1].set_title(r"Heat Source $q$")
-    fig.colorbar(im1, ax=axes[1], fraction=0.045, pad=0.06)
-    
-    im2 = axes[2].imshow(T.cpu().squeeze(), cmap='viridis')
-    axes[2].set_title(r"Temperature $T$")
-    fig.colorbar(im2, ax=axes[2], fraction=0.045, pad=0.06)
-    
-    plt.tight_layout()
-    plt.savefig(path)
-    plt.close()
-    return
-
 
 
 
@@ -674,7 +615,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
             idx += 1
         
         # Save loss
-        mse_diff.append(full_loss)
+        mse_diff.append(abs(full_loss - jac_misfit))
         if args.loss_type == "JAC":
             jac_diff_list.append(jac_misfit)
         # Save time
@@ -698,7 +639,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, vec, simulator):
             with torch.no_grad():
                 Y_pred = model(first_batch[0].float().cuda().unsqueeze(dim=1))
             plot_loss_checkpoint(epoch, loss_type, mse_diff, test_diff, jac_diff_list)
-            plot_path = f"../plot/NS_plot/checkpoint/FNO_NS_vort_{epoch}.png"
+            plot_path = f"../plot/NS_plot/checkpoint/FNO_NS_vort_{loss_type}_{epoch}.png"
             plot_results(first_batch[1][0].squeeze().cpu(), first_batch[1][1].squeeze().cpu(), Y_pred[0].squeeze(), Y_pred[1].squeeze(), plot_path)
                 
         if full_test_loss < lowest_loss:
@@ -779,14 +720,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=4000)
-    parser.add_argument("--num_train", type=int, default=600) #8000
-    parser.add_argument("--num_test", type=int, default=100)
-    parser.add_argument("--num_sample", type=int, default=600) #8000
+    parser.add_argument("--num_epoch", type=int, default=1000)
+    parser.add_argument("--num_train", type=int, default=1000) #8000
+    parser.add_argument("--num_test", type=int, default=200)
+    parser.add_argument("--num_sample", type=int, default=1000) #8000
     parser.add_argument("--num_init", type=int, default=20)
     parser.add_argument("--threshold", type=float, default=1e-8)
     parser.add_argument("--batch_size", type=int, default=100)
-    parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
+    parser.add_argument("--loss_type", default="MSE", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
@@ -883,7 +824,7 @@ if __name__ == "__main__":
         else:
             largest_eigenvector = []
             nx, ny = args.nx, args.ny
-            noise_std = 1.
+            noise_std = 0.2
             print("Reloaded train: ", train_x_raw[0].shape)
             # Compute FIM
             init_iter = int((args.num_train + args.num_test)/args.num_init)

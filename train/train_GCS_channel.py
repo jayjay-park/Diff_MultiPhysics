@@ -20,6 +20,8 @@ from mpl_toolkits.mplot3d import axes3d
 import seaborn as sGCS
 from functorch import vjp, vmap
 from torch.utils.data import Subset
+import matplotlib.colors as colors
+from matplotlib.colors import LinearSegmentedColormap
 
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from modulus.models.fno import FNO
@@ -228,13 +230,27 @@ def plot_results(true1, pred1, path):
     plt.savefig(path, dpi=150, bbox_inches='tight')
     plt.close()
 
-def plot_single(true1, path):
+def plot_single(true1, path, cmap='Blues'):
     plt.figure(figsize=(10, 10))
     plt.rcParams.update({'font.size': 16})
 
-    plt.imshow(true1, cmap='Blues')
-    plt.colorbar(fraction=0.045, pad=0.06)
-    # plt.title('True Saturation')
+    # Create a centered normalization around 0
+    norm = colors.CenteredNorm()
+
+    # Apply the norm both to the image and the colorbar
+    ax = plt.imshow(true1, cmap=cmap, norm=norm)
+    plt.colorbar(ax, fraction=0.045, pad=0.06, norm=norm)
+
+    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+def plot_single_abs(true1, path, cmap='Blues'):
+    plt.figure(figsize=(10, 10))
+    plt.rcParams.update({'font.size': 16})
+
+    # Apply the norm both to the image and the colorbar
+    ax = plt.imshow(true1, cmap=cmap)
+    plt.colorbar(ax, fraction=0.045, pad=0.06)
 
     plt.savefig(path, dpi=150, bbox_inches='tight')
     plt.close()
@@ -261,6 +277,33 @@ def plot_data(k, q, T, path):
     plt.close()
     return
 
+def plot_loss_checkpoint(epoch, loss_type, mse_diff, test_diff, jac_diff_list=None):
+    # Create loss plot
+    print("Create loss plot")
+    if epoch < 510:
+        mse_diff = np.asarray(mse_diff)
+        jac_diff_list = np.asarray(jac_diff_list)
+        test_diff = np.asarray(test_diff)
+    else: 
+        start_epoch = 30
+        mse_diff = mse_diff[start_epoch:]
+        test_diff = test_diff[start_epoch:]
+        jac_diff_list = jac_diff_list[start_epoch:]  # Only if JAC is relevant
+
+    path = f"../plot/Loss/checkpoint/FNO_GCS_{loss_type}_{epoch}.png"
+    epochs = np.arange(len(mse_diff))
+
+    fig, ax = plt.subplots()
+    ax.plot(epochs, mse_diff, "P-", lw=1.0, ms=4.0, color="coral", label="MSE (Train)")
+    ax.plot(epochs, test_diff, "P-", lw=1.0, ms=4.0, color="blue", label="MSE (Test)")
+    if args.loss_type == "JAC":
+        ax.plot(epochs, jac_diff_list, "P-", lw=1.0, color="slateblue", ms=4.0, label=r"$\|J^Tv - \hat{J}^Tv\|$")
+    ax.set_xlabel("Epochs",fontsize=24)
+    ax.set_ylabel("Loss", fontsize=24)
+    ax.legend()
+    plt.savefig(path, dpi=150, bbox_inches="tight")
+    return
+
 
 ### Train ###
 
@@ -270,8 +313,8 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
     print("Device: ", device)
 
     model = FNO(
-        in_channels=2,
-        out_channels=1,
+        in_channels=8,
+        out_channels=8,
         decoder_layer_size=128,
         num_fno_layers=6,
         num_fno_modes=[33, 33],
@@ -314,12 +357,12 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
     elif args.loss_type == "JAC":
         # Create vec_batch
         True_j = torch.tensor(True_j).float()
-        print("True J Before", True_j.shape)
-        True_j = True_j.reshape(-1, dataloader.batch_size, args.nx, args.ny)
+        print("True J Before", True_j.shape) #True J Before torch.Size([700, 8, 64, 64])
+        True_j = True_j.reshape(-1, dataloader.batch_size, 8, args.nx, args.ny)
         print("After True J", True_j.shape)
         vec = torch.tensor(vec)
         print("vec", vec.shape)
-        vec_batch = vec.reshape(-1, dataloader.batch_size, args.nx, args.ny)
+        vec_batch = vec.reshape(-1, dataloader.batch_size, 8, args.nx, args.ny)
         print("vec", vec_batch.shape)
         vec_batch = vec_batch.cuda().float()
 
@@ -342,14 +385,15 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
             if args.loss_type == "MSE":
                 output = model(X)
                 loss = criterion(output.squeeze(), Y.squeeze()) / torch.norm(Y)
+                if epoch == 1:
+                    plot_multiple_abs(Y[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/MSE/true_sat_{epoch}.png")
+                    plot_multiple_abs(Y[10].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/MSE/true_sat2_{epoch}.png")
                 if (epoch % 10 == 0) and (idx == 1):
                     print(Y.shape)
-                    plot_single(Y[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/MSE/true_sat_{epoch}.png")
-                    plot_single(Y[10].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/MSE/true_sat2_{epoch}.png")
-                    plot_single(Y[15].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/MSE/true_sat3_{epoch}.png")
-                    plot_single(output[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/MSE/learned_sat_{epoch}.png")
-                    plot_single(output[10].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/MSE/learned_sat2_{epoch}.png")
-                    plot_single(output[15].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/MSE/learned_sat3_{epoch}.png")
+                    plot_multiple_abs(output[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/MSE/learned_sat_{epoch}.png")
+                    plot_multiple_abs(output[10].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/MSE/learned_sat2_{epoch}.png")
+                    plot_multiple_abs(abs(output[0]-Y[0]).detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/MSE/diff_sat_{epoch}.png", "magma")
+                    plot_multiple_abs(abs(output[10]-Y[10]).detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/MSE/diff_sat2_{epoch}.png", "magma")
             elif args.loss_type == "Sobolev":
                 output = model(X.unsSqueeze(dim=1))
                 loss = criterion(output.squeeze(), Y.squeeze()) / torch.norm(Y)
@@ -367,19 +411,22 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
             # GM
                 target = True_j[idx].cuda()
                 output, vjp_func = torch.func.vjp(model, X)
-                loss = criterion(output.squeeze(), Y.squeeze()) / torch.norm(Y) * 10
-                vjp_out = vjp_func(vec_batch[idx].unsqueeze(dim=1))[0][:, 0].squeeze() # choose the pearmeability part
+                loss = criterion(output.squeeze(), Y.squeeze()) / torch.norm(Y)
+                vjp_out = vjp_func(vec_batch[idx])[0]
+                # vjp_out = vjp_out[0][:, 0].squeeze()
+                if epoch == 1:
+                    plot_multiple_abs(Y[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/JAC/true_sat_{epoch}.png")
+                    plot_multiple_abs(Y[10].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/JAC/true_sat2_{epoch}.png")
+                    plot_multiple(vec_batch[idx][0].detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/JAC/true_eigvec_{epoch}.png", cmap)
+                    plot_multiple(target[0].detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/JAC/true_vjp_{epoch}.png", cmap)
                 if (epoch % 10 == 0) and (idx == 1):
                     print(Y.shape)
-                    plot_single(Y[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/true_sat_{epoch}.png")
-                    plot_single(Y[10].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/true_sat2_{epoch}.png")
-                    plot_single(Y[15].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/true_sat3_{epoch}.png")
-                    plot_single(vec_batch[idx][0].detach().cpu().numpy(), f"../plot/GCS_plot/training/used_eigvec_{epoch}.png")
-                    plot_single(output[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/learned_sat_{epoch}.png")
-                    plot_single(output[10].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/learned_sat2_{epoch}.png")
-                    plot_single(output[15].squeeze().detach().cpu().numpy(), f"../plot/GCS_plot/training/learned_sat3_{epoch}.png")
-                    plot_single(target[0].detach().cpu().numpy(), f"../plot/GCS_plot/training/true_vjp_{epoch}.png")
-                    plot_single(vjp_out[0].detach().cpu().numpy(), f"../plot/GCS_plot/training/learned_vjp_{epoch}.png")
+                    plot_multiple_abs(output[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/JAC/learned_sat_{epoch}.png")
+                    plot_multiple_abs(output[10].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/JAC/learned_sat2_{epoch}.png")
+                    plot_multiple(vjp_out[0].detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/JAC/learned_vjp_{epoch}.png", cmap)
+                    plot_multiple_abs(abs(output[0]-Y[0]).detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/JAC/diff_sat_{epoch}.png", "magma")
+                    plot_multiple_abs(abs(output[10]-Y[10]).detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/JAC/diff_sat2_{epoch}.png", "magma")
+                    plot_multiple_abs(abs(target[0]-vjp_out[0]).detach().cpu().numpy(), f"../plot/GCS_channel_plot/training/JAC/diff_vjp_{epoch}.png", "magma")
                 # print(target.shape, vjp_out.shape, vec_batch[idx].shape)
                 jac_diff = criterion(target, vjp_out)
                 jac_misfit += jac_diff.detach().cpu().numpy() * args.reg_param
@@ -404,36 +451,28 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
             for X_test, Y_test in test_dataloader:
                 X_test, Y_test = X_test.cuda().float(), Y_test.cuda().float()
                 output = model(X_test)
-                test_loss = criterion(output.squeeze(), Y_test) / torch.norm(Y_test)
+                test_loss = criterion(output.squeeze(), Y_test) / torch.norm(Y_test) # relative error
                 full_test_loss += test_loss.item()
             test_diff.append(full_test_loss)
         model.train()
-        
+
         print(f"Epoch: {epoch}, Train Loss: {full_loss:.6f}, JAC misfit: {jac_misfit}, Test Loss: {full_test_loss:.6f}")
         if epoch % 50 == 0:
             torch.save(model.state_dict(), f"../test_result/Checkpoint/FNO_GCS_{loss_type}_{args.nx}_{args.num_train}_{epoch}.pth")
+            plot_loss_checkpoint(epoch, loss_type, mse_diff, test_diff, jac_diff_list)
         if full_test_loss < lowest_loss:
             print("saved lowest loss model")
             lowest_loss = full_test_loss
             torch.save(model.state_dict(), f"../test_result/best_model_FNO_GCS_{loss_type}.pth")
             # Save plot
-            # x_test_single = torch.tensor(test_x_raw[0]).cuda().float()
-            # print("test shape", len(test_x_raw), len(test_x_raw[0]), len(rolling), len(rolling[0]))
-            # y_test_rolling = torch.tensor(rolling[0]).reshape(5, args.nx, args.ny).cuda().float()
-            # print("Y", y_test_rolling.shape)
-            # with torch.no_grad():
-            #     for index in range(y_test_rolling.shape[0]):
-            #         print(index)
-            #         x_test_single = model(x_test_single.reshape(1, 1, args.nx, args.ny))
-            #         x_test_single = x_test_single.squeeze()
-            #         plot_path = f"../plot/GCS_plot/FNO_GCS_lowest_{loss_type}_{index}.png"
-            #         plot_results(y_test_rolling[index].cpu(), x_test_single.detach().cpu().squeeze(), plot_path)
             X_test, Y_test = next(iter(test_dataloader))
             X_test, Y_test = X_test.cuda().float(), Y_test.cuda().float()
             with torch.no_grad():
                 Y_pred = model(X_test)
-            plot_path = f"../plot/GCS_plot/FNO_GCS_lowest_{loss_type}.png"
-            plot_results(Y_test[0].squeeze().cpu(), Y_pred[0].squeeze(), plot_path)
+            plot_path = f"../plot/GCS_channel_plot/FNO_GCS_lowest_{loss_type}_True.png"
+            plot_multiple_abs(Y_test[0].squeeze().cpu(), plot_path)
+            plot_multiple_abs(Y_pred[0].squeeze().detach().cpu(), f"../plot/GCS_channel_plot/FNO_GCS_lowest_{loss_type}_Pred.png")
+            plot_multiple_abs(abs(Y_pred[0]-Y_test[0]).squeeze().detach().cpu(), f"../plot/GCS_channel_plot/FNO_GCS_lowest_{loss_type}_diff.png", "magma")
                 
 
         if full_loss < args.threshold:
@@ -469,7 +508,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
     mse_diff = np.asarray(mse_diff)
     jac_diff_list = np.asarray(jac_diff_list)
     test_diff = np.asarray(test_diff)
-    path = f"../plot/Loss/FNO_GCS_{loss_type}.png"
+    path = f"../plot/Loss/FNO_GCS_channel_{loss_type}.png"
 
     # Remove the first few epochs (e.g., the first 5 epochs)
     start_epoch = 30
@@ -503,6 +542,31 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
 
     return model
 
+def plot_multiple(figures, path, cmap='Blues'):
+    fig, axes = plt.subplots(1, 8, figsize=(40, 5))  # Create 1 row and 8 columns
+    plt.rcParams.update({'font.size': 16})
+
+    for i, (true1, ax) in enumerate(zip(figures, axes)):
+        norm = colors.CenteredNorm()
+        im = ax.imshow(true1, cmap=cmap, norm=norm)
+        ax.set_title(f'Time step {i+1}')
+        fig.colorbar(im, ax=ax, fraction=0.045, pad=0.06, norm=norm)
+
+    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+def plot_multiple_abs(figures, path, cmap='Blues'):
+    fig, axes = plt.subplots(1, 8, figsize=(40, 5))  # Create 1 row and 8 columns
+    plt.rcParams.update({'font.size': 16})
+
+    for i, (true1, ax) in enumerate(zip(figures, axes)):
+        im = ax.imshow(true1, cmap=cmap)
+        ax.set_title(f'Time step {i+1}')
+        fig.colorbar(im, ax=ax, fraction=0.045, pad=0.06)
+
+    plt.savefig(path, dpi=150, bbox_inches='tight')
+    plt.close()
+
 
 if __name__ == "__main__":
     # Set device
@@ -515,18 +579,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=1000)
-    parser.add_argument("--num_train", type=int, default=3400)
-    parser.add_argument("--num_test", type=int, default=600)
-    parser.add_argument("--num_sample", type=int, default=3000)
-    parser.add_argument("--num_init", type=int, default=60)
+    parser.add_argument("--num_epoch", type=int, default=2000)
+    parser.add_argument("--num_train", type=int, default=700)
+    parser.add_argument("--num_test", type=int, default=25)
+    parser.add_argument("--num_sample", type=int, default=700)
+    # parser.add_argument("--num_init", type=int, default=60)
     parser.add_argument("--threshold", type=float, default=1e-8)
-    parser.add_argument("--batch_size", type=int, default=20)
+    parser.add_argument("--batch_size", type=int, default=25)
     parser.add_argument("--loss_type", default="MSE", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
-    parser.add_argument("--reg_param", type=float, default=15.0)
+    parser.add_argument("--reg_param", type=float, default=0.5) # 0.1 -> 2
     parser.add_argument("--nu", type=float, default=0.001) # Viscosity
     parser.add_argument("--time_step", type=float, default=0.01) # time step
 
@@ -540,138 +604,96 @@ if __name__ == "__main__":
     for arg, value in vars(args).items():
         logger.info("%s: %s", arg, value)
 
-    def plot_series(one, two, three, four, path):
-        plt.figure(figsize=(20, 5))
-        plt.rcParams.update({'font.size': 16})
+    cmap = LinearSegmentedColormap.from_list(
+        "cmap_name",
+        ["#0000FF", "white", "#FF0000"]
+    )
 
-        plt.subplot(1, 4, 1)
-        plt.imshow(one, cmap='Blues')
-        plt.colorbar(fraction=0.045, pad=0.06)
-        plt.title('1st year')
-
-        plt.subplot(1, 4, 2)
-        plt.imshow(two, cmap='Blues')
-        plt.colorbar(fraction=0.045, pad=0.06)
-        plt.title('2nd year')
-
-        plt.subplot(1, 4, 3)
-        plt.imshow(three, cmap='Blues')
-        plt.colorbar(fraction=0.045, pad=0.06)
-        plt.title('3rd year')
-
-        plt.subplot(1, 4, 4)
-        plt.imshow(four, cmap='Blues')
-        plt.colorbar(fraction=0.045, pad=0.06)
-        plt.title('4th year')
-
-        plt.tight_layout()
-        plt.savefig(path)
-        plt.close()
 
     set_x, set_y, set_vjp, set_eig, set_rolling = [], [], [], [], []
 
-    '''
-    Input: K
-    Output: Saturation_{t:t+3}
-    '''
+    with h5py.File('../FNO-NF.jl/data/training-data/cons=1e-5_delta=25_num_sample=10000_theta0=5.jld2', 'r') as f:
+        # List all the datasets in the file
+        print("Keys: %s" % f.keys())
+        # Length of K is 10000. Load K
+        K = f['perm'][:]
+        print(len(K))
+        set_x.append(K) # 1, 10000, 64, 64
+        set_x = set_x[0]
 
-    # Read the first file
-    with h5py.File('FIM_data_samples_first_step.h5', 'r') as f1, \
-        h5py.File('FIM_data_samples_two_step.h5', 'r') as f2, \
-        h5py.File('FIM_data_samples_third_step.h5', 'r') as f3, \
-        h5py.File('FIM_data_samples_fourth_step.h5', 'r') as f4:
-        # 2nd year: ['Jv', 'K', 'SArray1', 'SArray2', 'SArray3', 'SArray4', 'SArray5', 'v']
-        # 4th, 6th, 8th year: ['Jv', 'v']
-        # There's 1000 K and 5 time steps, overall 5000 dataset.
+    # Read the each file s_idx: sample index
+    for s_idx in range(1, 726):
 
-        for sample in range(1000):
-            S1_index = "SArray1_"+str(sample+1)
-            S2_index = "SArray2_"+str(sample+1)
-            S3_index = "SArray3_"+str(sample+1)
-            S4_index = "SArray4_"+str(sample+1)
-            S5_index = "SArray5_"+str(sample+1)
-            K_index = "K_"+str(sample+1)
-            jv_index = "Jv_"+str(sample+1)
-            eig_index = "v_" + str(sample+1)
-            
-            # Create input ([K, S_t])
-            set_x.append([f1['K'][K_index][:], f1['SArray1'][S1_index][:]])
-            set_x.append([f1['K'][K_index][:], f1['SArray2'][S2_index][:]])
-            set_x.append([f1['K'][K_index][:], f1['SArray3'][S3_index][:]])
-            set_x.append([f1['K'][K_index][:], f1['SArray4'][S4_index][:]])
+        with h5py.File(f'../data/GCS_channel/FIM_Vjp_conc_100_obs_750_samples/conc_sample_{s_idx}_nobs_10.jld2', 'r') as f1, \
+            h5py.File(f'../data/GCS_channel/FIM_Vjp_conc_100_obs_750_samples/FIM_eigvec_sample_{s_idx}_nobs_10.jld2', 'r') as f2, \
+            h5py.File(f'../data/GCS_channel/FIM_Vjp_conc_100_obs_750_samples/FIM_vjp_sample_{s_idx}_nobs_10.jld2', 'r') as f3:
+            # There's 725 K and 8 time steps, overall 8*725 dataset.
 
-            # Create Output (S_{t+1})
-            set_y.append([f1['SArray2'][S2_index][:]])
-            set_y.append([f1['SArray3'][S3_index][:]])
-            set_y.append([f1['SArray4'][S4_index][:]])
-            set_y.append([f1['SArray5'][S5_index][:]])
+            # print("f1 Keys: %s" % f1.keys()) #<KeysViewHDF5 ['single_stored_object']>
+            S = f1['single_stored_object'][:] # len: 8 x 64
+            eigvec = f2['single_stored_object'][:] # len: 3 x 64 x 64 ..?
+            vjp = f3['single_stored_object'][:] # len: 4096 -> 64 x 64
 
-            if args.loss_type == "JAC":
-                # Create vjp
-                set_vjp.append([f1['Jv'][jv_index][:].T])
-                set_vjp.append([f2['Jv'][jv_index][:].T])
-                set_vjp.append([f3['Jv'][jv_index][:].T])
-                set_vjp.append([f4['Jv'][jv_index][:].T])
-                # Create eig
-                set_eig.append([f1['v'][eig_index][:]])
-                set_eig.append([f2['v'][eig_index][:]])
-                set_eig.append([f3['v'][eig_index][:]])
-                set_eig.append([f4['v'][eig_index][:]])
+            set_y.append(S) 
+            set_vjp.append(vjp) 
+            set_eig.append(eigvec[0])
 
 
             # Plot every 200th element
-            if sample % 200 == 0:
-                plot_single(f1['K'][K_index][:], f"../plot/GCS_plot/permeability_sample:{sample}.png")
-                plot_single(f1['SArray1'][S1_index][:], f"../plot/GCS_plot/saturation_firststep_sample:{sample}.png")
-                plot_single(f1['SArray2'][S2_index][:], f"../plot/GCS_plot/saturation_secondstep_sample:{sample}.png")
-                plot_single(f1['SArray3'][S3_index][:], f"../plot/GCS_plot/saturation_thridstep_sample:{sample}.png")
-                plot_single(f1['SArray4'][S4_index][:], f"../plot/GCS_plot/saturation_fourthstep_sample:{sample}.png")
+            if s_idx % 200 == 0:
+                plot_single_abs(set_x[0], f"../plot/GCS_channel_plot/data_permeability:{s_idx}.png")
+                plot_multiple(set_y[0], f"../plot/GCS_channel_plot/data_saturation:{s_idx}.png")
                 if args.loss_type == "JAC":
-                    plot_single(f1['Jv'][jv_index][:].T, f"../plot/GCS_plot/vjp_firststep_sample:{sample}.png")
-                    plot_single(f2['Jv'][jv_index][:].T, f"../plot/GCS_plot/vjp_secondstep_sample:{sample}.png")
-                    plot_single(f3['Jv'][jv_index][:].T, f"../plot/GCS_plot/vjp_thirdstep_sample:{sample}.png")
-                    plot_single(f4['Jv'][jv_index][:].T, f"../plot/GCS_plot/vjp_fourthstep_sample:{sample}.png")
-                    plot_single(f1['v'][eig_index][:], f"../plot/GCS_plot/first_step_sample:{sample}.png")
-                    plot_single(f2['v'][eig_index][:], f"../plot/GCS_plot/second_step_sample:{sample}.png")
-                    plot_single(f3['v'][eig_index][:], f"../plot/GCS_plot/third_step_sample:{sample}.png")
-                    plot_single(f4['v'][eig_index][:], f"../plot/GCS_plot/fourth_step_sample:{sample}.png")
-            
-        # set_eig = np.array(set_eig)
-        # set_eig = np.mean(set_eig, axis=0)
-        # set_eig = np.repeat(set_eig[np.newaxis, :, :], 1000, axis=0)
+                    plot_single(torch.tensor(set_vjp[0]).reshape(64, 64), f"../plot/GCS_channel_plot/data_vjp:{s_idx}.png")
+                    plot_single(set_eig[0], f"../plot/GCS_channel_plot/data_eigvec:{s_idx}.png")
 
 
-
-    print("len or:", len(set_x), len(set_y), len(set_vjp))
+    print("len or:", len(set_x), len(set_x[0]), len(set_y), len(set_vjp))
     train_x_raw = torch.tensor(set_x[:args.num_train])
     train_y_raw = torch.tensor(set_y[:args.num_train])
-    test_x_raw = torch.tensor(set_x[args.num_train:])
-    test_y_raw = torch.tensor(set_y[args.num_train:])
+    test_x_raw = torch.tensor(set_x[args.num_train:args.num_train+args.num_test])
+    test_y_raw = torch.tensor(set_y[args.num_train:args.num_train+args.num_test])
+
+    train_x_raw = train_x_raw.unsqueeze(1)  # Now tensor is [25, 1, 64, 64]
+    train_x_raw = train_x_raw.repeat(1, 8, 1, 1)  # Now tensor is [25, 8, 64, 64]
+
+    test_x_raw = test_x_raw.unsqueeze(1)  # Now tensor is [25, 1, 64, 64]
+    test_x_raw = test_x_raw.repeat(1, 8, 1, 1)  # Now tensor is [25, 8, 64, 64]
+
+    # normalize train_y_raw and train_vjp and set_eig
+    def normalize_to_range(x, new_min=-1.0, new_max=1.0):
+        """
+        Normalize the tensor x to the range [new_min, new_max]
+        """
+        old_min = torch.min(x)
+        old_max = torch.max(x)
+        x_norm = (new_max - new_min) * (x - old_min) / (old_max - old_min) + new_min
+        return x_norm
+
     if args.loss_type == "JAC":
-        train_vjp = torch.tensor(set_vjp[:args.num_train])
+        train_vjp = torch.tensor(set_vjp[:args.num_train]).reshape(-1, 64, 64)
+        print("vjp norm", torch.norm(train_vjp))
+        train_vjp = train_vjp / torch.norm(train_vjp)
+        # normalize vjp
+        # train_vjp = torch.stack([normalize_to_range(sample) for sample in train_vjp])
+
         set_eig = torch.tensor(set_eig[:args.num_train])
-        set_rolling = set_rolling[args.num_train:]
+        # set_eig = torch.stack([normalize_to_range(sample) for sample in set_eig])
+        
+        train_vjp = train_vjp.unsqueeze(1)  # Now tensor is [25, 1, 64, 64]
+        train_vjp = train_vjp.repeat(1, 8, 1, 1)  # Now tensor is [25, 8, 64, 64]
+
+        set_eig = set_eig.unsqueeze(1)  # Now tensor is [25, 1, 64, 64]
+        set_eig = set_eig.repeat(1, 8, 1, 1)  # Now tensor is [25, 8, 64, 64]
         print("len: ", len(train_vjp), len(set_eig))
     else:
         train_vjp, set_eig, set_rolling = None, None, None
     print("len:", len(train_x_raw), len(train_y_raw), len(test_x_raw), len(test_y_raw))
 
-    if args.loss_type == "JAC":
-        max_value = np.max(np.abs(set_vjp[:args.num_train]))
-        train_vjp /= max_value
-        print("Maximum value:", max_value) # 379698538249304.8
-        print("After normalization:", torch.max(train_vjp), torch.min(train_vjp))
-        for i in range(0,20,4):
-            plot_series(train_vjp[i].squeeze(), train_vjp[i+1].squeeze(), train_vjp[i+2].squeeze(), train_vjp[i+3].squeeze(), f"../plot/GCS_plot/series/sample_normalized:{i}.png")
-
     # Randomly sample indices for train and test sets
-    train_indices = np.random.choice(len(train_x_raw), args.num_train, replace=False)
-    test_indices = np.random.choice(len(test_y_raw), args.num_test, replace=False)
     # Create subsets of the datasets
     train_dataset = CustomDataset(train_x_raw, train_y_raw)
     test_dataset = CustomDataset(test_x_raw, test_y_raw)
-    train_dataset = Subset(train_dataset, train_indices)
-    test_dataset = Subset(test_dataset, test_indices)
     # Create DataLoaders
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
@@ -679,4 +701,4 @@ if __name__ == "__main__":
     print("Mini-batch: ", len(train_loader), train_loader.batch_size)
 
     # train
-    main(logger, args, args.loss_type, train_loader, test_loader, train_vjp, set_eig, set_rolling, test_x_raw)
+    main(logger, args, args.loss_type, train_loader, test_loader, train_vjp, set_eig, None, test_x_raw)

@@ -76,24 +76,21 @@ def generate_dataset(num_samples, args, num_init, time_step, Re, forcing, nx=50,
 
         # Solve the NS
         for i in range(num_iter):
-            print("time: ", i)
             w_next = ns_solver(w_current, f=forcing, T=time_step, Re=Re)
             vorticity_data.append(w_next)
             w_current = w_next
-            # Compute FIM_multi
-            fim = compute_fim_NS(ns_solver, w, w_next, 1., args.nx, args.ny, forcing, args.time_step, Re, s, "multi", num_observations=args.num_obs).detach().cpu()
-            eigenvalues, eigenvec = torch.linalg.eigh(fim.cuda())
-            largest_eigenvector.append(eigenvec[0].detach().cpu())
+        # Compute FIM_multi
+        fim = compute_fim_NS(ns_solver, w, torch.stack(vorticity_data[1:]), 1., args.nx, args.ny, forcing, args.time_step, Re, s, "multi", num_observations=args.num_obs).detach().cpu()
+        eigenvalues, eigenvec = torch.linalg.eigh(fim.cuda())
+        largest_eigenvector.append(eigenvec[0].detach().cpu())
 
-            if ((s == 0) or (s == 1)) and (i < 25):
-                print("eigval: ", eigenvalues)
-                if i == 0:
-                    plot_single(vorticity_data[0].detach().cpu(), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_init_state_{s}.png', "viridis")
-                plot_single(eigenvec[0].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec0_{s}_{i}.png', "viridis")
-                plot_single(eigenvec[1].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec1_{s}_{i}.png', "viridis")
-                plot_single(eigenvec[2].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvec2_{s}_{i}.png', "viridis")
-                plot_single(eigenvalues.detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_eigenvalues_{s}_{i}.png', "viridis")
-            
+        if ((s == 0) or (s == 1)) and (i < 25):
+            print("eigval: ", eigenvalues)
+            if i == 0:
+                plot_single(vorticity_data[0].detach().cpu(), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_init_state_{s}.png', "viridis")
+            plot_single(eigenvec[0].detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_multi_eigenvec0_{s}_{i}.png', "viridis")
+            plot_single(eigenvalues.detach().cpu().reshape(args.nx, args.ny), f'../plot/NS_plot/FIM/num_obs={args.num_obs}/{args.num_obs}_multi_eigenvalues_{s}_{i}.png', "viridis")
+        
         
         input.append(vorticity_data[:-1])
         output.append(vorticity_data[1:])
@@ -202,7 +199,7 @@ def compute_fim_NS(simulator, input, T_data, noise_std, nx, ny, forcing, time_st
         # T_pred = simulator(q, f=forcing, T=time_step, Re=Re)
         T_pred = T_data + gaussian_noise.cuda()
         ll = log_likelihood(T_data.cuda(), T_pred, noise_std)
-        flat_Jacobian = torch.autograd.grad(inputs=input, outputs=ll, create_graph=True)[0].flatten() # 50 by 50 -> [2500]
+        flat_Jacobian = torch.autograd.grad(inputs=input, outputs=ll.sum(), create_graph=True)[0].flatten() # 50 by 50 -> [2500]
         flat_Jacobian = flat_Jacobian.reshape(1, -1)
         fim += torch.matmul(flat_Jacobian.T, flat_Jacobian).detach().cpu()
         if (j == 9) or (j == 49) or (j == 99):
@@ -568,9 +565,9 @@ if __name__ == "__main__":
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--num_epoch", type=int, default=2000)
-    parser.add_argument("--num_train", type=int, default=2000) #8000
+    parser.add_argument("--num_train", type=int, default=400) #8000
     parser.add_argument("--num_test", type=int, default=200)
-    parser.add_argument("--num_sample", type=int, default=2000) #8000
+    parser.add_argument("--num_sample", type=int, default=400) #8000
     parser.add_argument("--num_init", type=int, default=50)
     parser.add_argument("--threshold", type=float, default=1e-8)
     parser.add_argument("--batch_size", type=int, default=100)
@@ -578,7 +575,7 @@ if __name__ == "__main__":
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
-    parser.add_argument("--reg_param", type=float, default=200.0)
+    parser.add_argument("--reg_param", type=float, default=100.0)
     parser.add_argument("--nu", type=float, default=0.001) # Viscosity
     parser.add_argument("--time_step", type=float, default=0.05) # time step
     parser.add_argument("--num_obs", type=float, default=10) # time step
