@@ -172,8 +172,8 @@ ssim = StructuralSimilarityIndexMeasure()
 num_col = 0
 kernel_size = 11  # Example kernel size (should be odd)
 sigma = 20.0  # Standard deviation of the Gaussian
-learning_rate = 50.0 # [0.5, 1.0, 5.0, 20.0, 50.0, 100.0]
-num_epoch = 2
+learning_rate = 100.0 # [0.5, 1.0, 5.0, 20.0, 50.0, 100.0]
+num_epoch = 400
 
 # Load MSE FNO
 MSE_model = FNO(
@@ -198,11 +198,11 @@ JAC_model = FNO(
     dimension=2,
     latent_channels=64
 ).to(device)
-JAC_path = f"../test_result/best_model_FNO_GCS_JAC.pth"
+JAC_path = f"../test_result/best_model_FNO_GCS_full epoch_JAC.pth"
 JAC_model.load_state_dict(torch.load(JAC_path))
 JAC_model.eval()
 
-MSE_path = f"../test_result/best_model_FNO_GCS_MSE.pth"
+MSE_path = f"../test_result/best_model_FNO_GCS_full epoch_MSE.pth"
 MSE_model.load_state_dict(torch.load(MSE_path))
 MSE_model.eval()
 
@@ -214,10 +214,8 @@ with h5py.File('../FNO-NF.jl/data/training-data/cons=1e-5_delta=25_num_sample=10
 
 set_x = set_x[0]
 set_x = torch.tensor(set_x)
-set_x = set_x[:2000]  # Reduce the dataset size
-set_x = set_x[1900:] # only test data
-# H(K0)
-zero_X = torch.mean(torch.tensor(set_x).to(device).float(), dim=0)
+set_x = set_x[:1000]  # Reduce the dataset size
+set_x = set_x[900:] # only test data
 set_x = set_x.unsqueeze(1).repeat(1, 8, 1, 1)  # Reshape [2000, 8, 64, 64]
 set_x = set_x.reshape(-1, batch_size, 8, 64, 64)  # Reshape to batches
 if loss_type == "JAC":
@@ -226,13 +224,34 @@ else:
     FNO_type = MSE_model
 
 # Load output data S (observed data)
-for s_idx in range(1, 2001):
-    with h5py.File(f'../data/GCS_channel/FIM_Vjp_conc/conc_sample_{s_idx}_nobs_10.jld2', 'r') as f1:
-        S = f1['single_stored_object'][:]
-        set_y.append(S)
+# for s_idx in range(1, 2001):
+#     with h5py.File(f'../data/GCS_channel/FIM_Vjp_conc/conc_sample_{s_idx}_nobs_10.jld2', 'r') as f1:
+#         S = f1['single_stored_object'][:]
+#         set_y.append(S)
 
-set_y = torch.tensor(set_y)
-set_y = set_y[1900:]
+# Read the each file s_idx: sample index
+for s_idx in range(1, 1001):
+
+    with h5py.File(f'../FNO-NF.jl/scripts/num_obs_2/states_sample_{s_idx}_nobs_2.jld2', 'r') as f1:
+
+        # print("f1 Keys: %s" % f1.keys()) #<KeysViewHDF5 ['single_stored_object']>
+        # S = f1['single_stored_object'][:] # len: 8 x 64
+        # Assuming 'states' is the key where the states are stored
+        states_refs = f1['single_stored_object'][:]  # Load the array of object references
+        states_tensors = []
+        # Loop over the references, dereference them, and convert to tensors
+        for ref in states_refs:
+            # Dereference the object reference
+            state_data = f1[ref][:]
+            
+            # Convert the dereferenced data to a PyTorch tensor
+            state_tensor = torch.tensor(state_data)
+            states_tensors.append(state_tensor)
+
+        # set_y.append(S) 
+        set_y.append(torch.stack(states_tensors).reshape(8, 64, 64))
+
+set_y = torch.stack(set_y[900:])
 org_set_y = set_y
 plot_multiple_abs(org_set_y[0], f'GCS_partial/S_org', cmap='Blues')
 # three column.
@@ -257,6 +276,7 @@ elif num_col == 1:
 
 
 # set_y = set_y * mask
+
 plot_multiple_abs(set_y[0], f'GCS_partial/S_masked3', cmap='Blues')
 set_y = set_y.reshape(-1, batch_size, 8, 64, 64)
 num_batch = set_x.shape[0]
@@ -281,8 +301,8 @@ def least_squares_posterior_estimation(model, input_data, true_data, model_type,
         plot_single_abs(input_data.detach().cpu()[0, 0], f'GCS_partial/iter_{model_type}_{iteration}', cmap='Blues')
         # mask is well operator here
         output = output #* mask[:100].cuda().float()
-        # loss = mse_loss(output[:, :, 15:-15], true_data[:, :, 15:-15])
-        loss = mse_loss(output, true_data)
+        loss = mse_loss(output[:, :, 15:-15], true_data[:, :, 15:-15])
+        # loss = mse_loss(output, true_data)
         losses.append(loss.item())
         loss.backward()
         optimizer.step()
@@ -350,6 +370,14 @@ for i in range(num_batch):
     # Perform least squares posterior estimation by updating input permeability K
     # zero_X = apply_gaussian_smoothing(X, kernel_size, sigma)
     # zero_X = torch.mean(torch.tensor(set_x).to(device).float(), dim=0)
+    # H(K0)
+    zero_X = torch.mean(X[:, 0], dim=0).unsqueeze(dim=0) #[64, 64]
+    print("first", zero_X.shape)
+    zero_X = zero_X.unsqueeze(1).repeat(1, 8, 1, 1)  # Reshape [100, 8, 64, 64]
+    print(zero_X.shape)
+    zero_X = zero_X.repeat(100, 1, 1, 1)
+    print(zero_X.shape)
+    #######
     posterior_estimate_mse, mse_losses = least_squares_posterior_estimation(MSE_model, zero_X, Y_true, "MSE", learning_rate, num_iterations=num_epoch)
     posterior_estimate_jac, jac_losses = least_squares_posterior_estimation(JAC_model, zero_X, Y_true, "JAC", learning_rate, num_iterations=num_epoch)
 
@@ -371,6 +399,8 @@ for i in range(num_batch):
     for t in range(0, num_epoch, 50):
         print(t)
         for b in range(batch_size): # for every test sample
+            print("b", b)
+            print(len(posterior_estimate_mse), X.shape)
             abs_diff_mse = abs(posterior_estimate_mse[t][b][-1].detach().cpu() - X[b][-1].detach().cpu())
             abs_diff_jac = abs(posterior_estimate_jac[t][b][-1].detach().cpu() - X[b][-1].detach().cpu())
             ssim_mse = ssim(posterior_estimate_mse[t][b][-1].detach().cpu().unsqueeze(dim=0).unsqueeze(0), X[b][-1].detach().cpu().unsqueeze(dim=0).unsqueeze(dim=0))
@@ -387,11 +417,21 @@ for i in range(num_batch):
         abs_diff_jac = abs(posterior_estimate_jac[t][b][-1].detach().cpu() - X[b][-1].detach().cpu())
         ssim_mse = ssim(posterior_estimate_mse[t][b][-1].detach().cpu().unsqueeze(dim=0).unsqueeze(0), X[b][-1].detach().cpu().unsqueeze(dim=0).unsqueeze(dim=0))
         ssim_jac = ssim(posterior_estimate_jac[t][b][-1].detach().cpu().unsqueeze(dim=0).unsqueeze(0), X[b][-1].detach().cpu().unsqueeze(dim=0).unsqueeze(dim=0))
-        path = f'GCS_partial/both_{num_col}_200/posterior_{t}_{i}_{b}'
+        path = f'GCS_partial/both_{num_col}_{learning_rate}/posterior_{t}_{i}_{b}'
         ssim_all_mse += ssim_mse
         ssim_all_jac += ssim_jac
         print("shape", X[b][-1].shape, zero_X[b][-1].shape, posterior_estimate_mse[t][b][-1].shape)
         
         plot_diff_with_shared_colorbar_all([X[b][-1].detach().cpu(), zero_X[b][-1].detach().cpu(), posterior_estimate_mse[t][b][-1].detach().cpu(), posterior_estimate_jac[t][b][-1].detach().cpu(), abs_diff_mse, abs_diff_jac], t, ssim_mse, ssim_jac, path, cmap='magma')
-    print("PBI SSIM Full:", ssim_all_jac)
-    print("MSE SSIM Full:", ssim_all_mse)
+    print("PBI SSIM Full:", ssim_all_jac, "PBI losses", jac_losses[-1])
+    print("MSE SSIM Full:", ssim_all_mse, "MSE losses:", mse_losses[-1])
+
+# Full 100.
+    # PBI SSIM Full: tensor(56.6365) PBI losses 2.1875030142837204e-05
+# MSE SSIM Full: tensor(55.6442) MSE losses: 2.9429453206830658e-05
+
+# PBI SSIM Full: tensor(57.5216) PBI losses 1.4258051123761106e-05
+# MSE SSIM Full: tensor(59.3005) MSE losses: 2.1109874069225043e-05
+
+# PBI SSIM Full: tensor(56.2269) PBI losses 1.996083665289916e-05
+# MSE SSIM Full: tensor(56.5895) MSE losses: 3.419788117753342e-05
