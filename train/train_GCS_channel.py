@@ -209,24 +209,6 @@ def plot_results(true1, pred1, path):
     plt.colorbar(fraction=0.045, pad=0.06)
     plt.title('Error')
 
-    # plt.subplot(2, 3, 4)
-    # plt.imshow(true2.cpu().numpy(), cmap='Blues')
-    # plt.colorbar(fraction=0.045, pad=0.06)
-    # plt.title('True Saturation')
-
-    # plt.subplot(2, 3, 5)
-    # plt.imshow(pred2.cpu().numpy(), cmap='Blues')
-    # plt.colorbar(fraction=0.045, pad=0.06)
-    # plt.title('Predicted Saturation')
-
-    # # Set colorbar to be centered at 0 for second error map
-    # plt.subplot(2, 3, 6)
-    # error2 = true2.cpu().numpy() - pred2.cpu().numpy()
-    # vmin, vmax = -max(abs(error2.min()), abs(error2.max())), max(abs(error2.min()), abs(error2.max()))
-    # plt.imshow(error2, cmap='inferno', vmin=vmin, vmax=vmax)
-    # plt.colorbar(fraction=0.045, pad=0.06)
-    # plt.title('Error')
-
     plt.savefig(path, dpi=150, bbox_inches='tight')
     plt.close()
 
@@ -610,13 +592,14 @@ if __name__ == "__main__":
     # parser.add_argument("--num_init", type=int, default=60)
     parser.add_argument("--threshold", type=float, default=1e-8)
     parser.add_argument("--batch_size", type=int, default=100)
-    parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
+    parser.add_argument("--loss_type", default="MSE", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
     parser.add_argument("--reg_param", type=float, default=1.0) # 0.1 -> 2
     parser.add_argument("--nu", type=float, default=0.001) # Viscosity
     parser.add_argument("--time_step", type=float, default=0.01) # time step
+    parser.add_argument("--num_vec", type=int, default=3)
 
     args = parser.parse_args()
 
@@ -646,21 +629,33 @@ if __name__ == "__main__":
         set_x = set_x[0]
 
     # Read the each file s_idx: sample index
-    for s_idx in range(1, 2001):
+    for s_idx in range(1, 1001):
 
-        with h5py.File(f'../data/GCS_channel/FIM_Vjp_conc/conc_sample_{s_idx}_nobs_10.jld2', 'r') as f1, \
-            h5py.File(f'../data/GCS_channel/FIM_Vjp_conc/FIM_eigvec_sample_{s_idx}_nobs_10.jld2', 'r') as f2, \
-            h5py.File(f'../data/GCS_channel/FIM_Vjp_conc/FIM_vjp_sample_{s_idx}_nobs_10.jld2', 'r') as f3:
-            # There's 725 K and 8 time steps, overall 8*725 dataset.
+        with h5py.File(f'../FNO-NF.jl/scripts/num_obs_2/states_sample_{s_idx}_nobs_2.jld2', 'r') as f1, \
+            h5py.File(f'../FNO-NF.jl/scripts/num_obs_2/FIM_eigvec_sample_{s_idx}_nobs_2.jld2', 'r') as f2, \
+            h5py.File(f'../FNO-NF.jl/scripts/num_obs_2/FIM_vjp_sample_{s_idx}_nobs_2.jld2', 'r') as f3:
 
             # print("f1 Keys: %s" % f1.keys()) #<KeysViewHDF5 ['single_stored_object']>
-            S = f1['single_stored_object'][:] # len: 8 x 64
+            # S = f1['single_stored_object'][:] # len: 8 x 64
+            # Assuming 'states' is the key where the states are stored
+            states_refs = f1['single_stored_object'][:]  # Load the array of object references
+            states_tensors = []
+            # Loop over the references, dereference them, and convert to tensors
+            for ref in states_refs:
+                # Dereference the object reference
+                state_data = f1[ref][:]
+                
+                # Convert the dereferenced data to a PyTorch tensor
+                state_tensor = torch.tensor(state_data)
+                states_tensors.append(state_tensor)
+            
             eigvec = f2['single_stored_object'][:] # len: 3 x 64 x 64 ..?
             vjp = f3['single_stored_object'][:] # len: 4096 -> 64 x 64
 
-            set_y.append(S) 
-            set_vjp.append(vjp) 
-            set_eig.append(eigvec[0])
+            # set_y.append(S) 
+            set_y.append(torch.stack(states_tensors).reshape(8, 64, 64))
+            set_vjp.append(torch.tensor(vjp).reshape(8,64,64)) 
+            set_eig.append(torch.tensor(eigvec).reshape(8, 64, 64))
 
 
             # Plot every 200th element
@@ -669,15 +664,15 @@ if __name__ == "__main__":
                 print(len(set_y), s_idx)
                 plot_multiple_abs(set_y[s_idx-1], f"../plot/GCS_channel_plot/data_saturation:{s_idx}.png")
                 if args.loss_type == "JAC":
-                    plot_single(torch.tensor(set_vjp[s_idx-1]).reshape(64, 64), f"../plot/GCS_channel_plot/data_vjp:{s_idx}.png")
-                    plot_single(set_eig[s_idx-1], f"../plot/GCS_channel_plot/data_eigvec:{s_idx}.png")
+                    plot_multiple(torch.tensor(set_vjp[s_idx-1]), f"../plot/GCS_channel_plot/data_vjp:{s_idx}.png")
+                    plot_multiple(set_eig[s_idx-1], f"../plot/GCS_channel_plot/data_eigvec:{s_idx}.png")
 
 
     print("len or:", len(set_x), len(set_x[0]), len(set_y), len(set_vjp))
     train_x_raw = torch.tensor(set_x[:args.num_train])
-    train_y_raw = torch.tensor(set_y[:args.num_train])
+    train_y_raw = torch.stack(set_y[:args.num_train])
     test_x_raw = torch.tensor(set_x[args.num_train:args.num_train+args.num_test])
-    test_y_raw = torch.tensor(set_y[args.num_train:args.num_train+args.num_test])
+    test_y_raw = torch.stack(set_y[args.num_train:args.num_train+args.num_test])
 
     train_x_raw = train_x_raw.unsqueeze(1)  # Now tensor is [25, 1, 64, 64]
     train_x_raw = train_x_raw.repeat(1, 8, 1, 1)  # Now tensor is [25, 8, 64, 64]
@@ -696,20 +691,20 @@ if __name__ == "__main__":
         return x_norm
 
     # if args.loss_type == "JAC":
-    train_vjp = torch.tensor(set_vjp[:args.num_train]).reshape(-1, 64, 64)
+    train_vjp = torch.stack(set_vjp[:args.num_train]).reshape(-1, 64, 64)
     print("vjp norm", torch.norm(train_vjp))
     train_vjp = train_vjp / torch.norm(train_vjp)
     # normalize vjp
     # train_vjp = torch.stack([normalize_to_range(sample) for sample in train_vjp])
 
-    set_eig = torch.tensor(set_eig[:args.num_train])
+    set_eig = torch.stack(set_eig[:args.num_train])
     # set_eig = torch.stack([normalize_to_range(sample) for sample in set_eig])
     
-    train_vjp = train_vjp.unsqueeze(1)  # Now tensor is [25, 1, 64, 64]
-    train_vjp = train_vjp.repeat(1, 8, 1, 1)  # Now tensor is [25, 8, 64, 64]
+    # train_vjp = train_vjp.unsqueeze(1)  # Now tensor is [25, 1, 64, 64]
+    # train_vjp = train_vjp.repeat(1, 8, 1, 1)  # Now tensor is [25, 8, 64, 64]
 
-    set_eig = set_eig.unsqueeze(1)  # Now tensor is [25, 1, 64, 64]
-    set_eig = set_eig.repeat(1, 8, 1, 1)  # Now tensor is [25, 8, 64, 64]
+    # set_eig = set_eig.unsqueeze(1)  # Now tensor is [25, 1, 64, 64]
+    # set_eig = set_eig.repeat(1, 8, 1, 1)  # Now tensor is [25, 8, 64, 64]
     print("len: ", len(train_vjp), len(set_eig))
     # else:
         # train_vjp, set_eig, set_rolling = None, None, None
