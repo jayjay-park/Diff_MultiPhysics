@@ -31,6 +31,8 @@ resources:
 ---
 
 ## Hello, I'm a new MS student {.smaller}
+- MS student in ECE department.
+- Background:
 - Surrogate Modeling in Chaotic Systems.
 - Include
 
