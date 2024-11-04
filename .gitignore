@@ -1,9 +1,11 @@
 *.h5
 test_result/best_model_FNO_Heat_MSE.pth
 test_result/best_model_FNO_Heat_JAC.pth
-*.png
 *.pth
+*.npz
 *.tar.gz
+*.jld2
+*.png
 torch-cfd/
 JAXFLUIDS/
 data/lettuce/
@@ -22,7 +24,6 @@ plot/GCS_plot/training_JAC/
 plot/GCS_plot/training_JAC_transposed/
 data/
 FNO-NF.jl/
-gen_sample/
 plot/Burger_plot/
 plot/GCS_channel_onestep/
 plot/GCS_channel_plot_epoch2000/
