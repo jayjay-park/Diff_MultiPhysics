@@ -1,0 +1,17 @@
+lr: 0.0005
+weight_decay: 0.0005
+num_epoch: 4000
+num_train: 1000
+num_test: 200
+num_sample: 1000
+num_init: 20
+threshold: 1e-08
+batch_size: 100
+loss_type: JAC
+nx: 64
+ny: 64
+noise: 0.01
+reg_param: 100.0
+nu: 0.01
+time_step: 0.05
+num_obs: 100

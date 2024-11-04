@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.5.57">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Jayjay, Tuna, Jason, Richard">
+<meta name="dcterms.date" content="2024-09-30">
+
+<title>Data Generation</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="experiment_result_files/libs/clipboard/clipboard.min.js"></script>
+<script src="experiment_result_files/libs/quarto-html/quarto.js"></script>
+<script src="experiment_result_files/libs/quarto-html/popper.min.js"></script>
+<script src="experiment_result_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="experiment_result_files/libs/quarto-html/anchor.min.js"></script>
+<link href="experiment_result_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="experiment_result_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="experiment_result_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="experiment_result_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="experiment_result_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN") {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+</head>
+
+<body>
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#surrogate-modeling-for-which-system" id="toc-surrogate-modeling-for-which-system" class="nav-link active" data-scroll-target="#surrogate-modeling-for-which-system"><span class="header-section-number">1</span> Surrogate Modeling for Which System?</a></li>
+  <li><a href="#twophase-flow-for-the-co2-saturation" id="toc-twophase-flow-for-the-co2-saturation" class="nav-link" data-scroll-target="#twophase-flow-for-the-co2-saturation"><span class="header-section-number">2</span> Twophase flow for the CO2 saturation</a>
+  <ul class="collapse">
+  <li><a href="#dataset" id="toc-dataset" class="nav-link" data-scroll-target="#dataset"><span class="header-section-number">2.1</span> Dataset</a></li>
+  <li><a href="#fisher-information-matrix" id="toc-fisher-information-matrix" class="nav-link" data-scroll-target="#fisher-information-matrix"><span class="header-section-number">2.2</span> Fisher Information Matrix</a>
+  <ul class="collapse">
+  <li><a href="#computing-fisher-information-matrix-for-each-datapoint" id="toc-computing-fisher-information-matrix-for-each-datapoint" class="nav-link" data-scroll-target="#computing-fisher-information-matrix-for-each-datapoint"><span class="header-section-number">2.2.1</span> Computing Fisher Information Matrix for each datapoint</a></li>
+  <li><a href="#how-does-fim-change-as-number-of-observation-increases" id="toc-how-does-fim-change-as-number-of-observation-increases" class="nav-link" data-scroll-target="#how-does-fim-change-as-number-of-observation-increases"><span class="header-section-number">2.2.2</span> How does FIM change as number of observation increases?</a></li>
+  <li><a href="#making-sense-of-fim-obtained" id="toc-making-sense-of-fim-obtained" class="nav-link" data-scroll-target="#making-sense-of-fim-obtained"><span class="header-section-number">2.2.3</span> Making Sense of FIM obtained</a></li>
+  <li><a href="#how-does-eigenvectors-of-fim-look-like-as-m-increases" id="toc-how-does-eigenvectors-of-fim-look-like-as-m-increases" class="nav-link" data-scroll-target="#how-does-eigenvectors-of-fim-look-like-as-m-increases"><span class="header-section-number">2.2.4</span> How does eigenvectors of FIM look like as <span class="math inline">\(M\)</span> increases?</a></li>
+  <li><a href="#how-does-vector-jacobian-product-look-like-as-m-increases" id="toc-how-does-vector-jacobian-product-look-like-as-m-increases" class="nav-link" data-scroll-target="#how-does-vector-jacobian-product-look-like-as-m-increases"><span class="header-section-number">2.2.5</span> How does vector Jacobian product look like as <span class="math inline">\(M\)</span> increases?</a></li>
+  </ul></li>
+  </ul></li>
+  <li><a href="#incompressible-navier-stokes" id="toc-incompressible-navier-stokes" class="nav-link" data-scroll-target="#incompressible-navier-stokes"><span class="header-section-number">3</span> Incompressible Navier Stokes</a>
+  <ul class="collapse">
+  <li><a href="#dataset-1" id="toc-dataset-1" class="nav-link" data-scroll-target="#dataset-1"><span class="header-section-number">3.1</span> Dataset</a></li>
+  <li><a href="#fisher-information-matrix-1" id="toc-fisher-information-matrix-1" class="nav-link" data-scroll-target="#fisher-information-matrix-1"><span class="header-section-number">3.2</span> Fisher Information Matrix</a>
+  <ul class="collapse">
+  <li><a href="#how-do-we-compute-fim" id="toc-how-do-we-compute-fim" class="nav-link" data-scroll-target="#how-do-we-compute-fim"><span class="header-section-number">3.2.1</span> How do we compute FIM?</a></li>
+  <li><a href="#how-does-fim-looks-like-as-m-changes" id="toc-how-does-fim-looks-like-as-m-changes" class="nav-link" data-scroll-target="#how-does-fim-looks-like-as-m-changes"><span class="header-section-number">3.2.2</span> How does FIM looks like as <span class="math inline">\(M\)</span> changes?</a></li>
+  <li><a href="#making-sense-of-fim-obtained-1" id="toc-making-sense-of-fim-obtained-1" class="nav-link" data-scroll-target="#making-sense-of-fim-obtained-1"><span class="header-section-number">3.2.3</span> Making Sense of FIM obtained</a></li>
+  <li><a href="#single-fim-for-single-data-points-in-a-single-time-series" id="toc-single-fim-for-single-data-points-in-a-single-time-series" class="nav-link" data-scroll-target="#single-fim-for-single-data-points-in-a-single-time-series"><span class="header-section-number">3.2.4</span> Single FIM for single data points in a single time series</a></li>
+  <li><a href="#single-fim-for-single-time-series" id="toc-single-fim-for-single-time-series" class="nav-link" data-scroll-target="#single-fim-for-single-time-series"><span class="header-section-number">3.2.5</span> Single FIM for single time series</a></li>
+  </ul></li>
+  <li><a href="#future-step" id="toc-future-step" class="nav-link" data-scroll-target="#future-step"><span class="header-section-number">3.3</span> Future Step</a></li>
+  <li><a href="#question" id="toc-question" class="nav-link" data-scroll-target="#question"><span class="header-section-number">3.4</span> Question</a></li>
+  </ul></li>
+  </ul>
+<div class="quarto-alternate-formats"><h2>Other Formats</h2><ul><li><a href="experiment_result.pdf"><i class="bi bi-file-pdf"></i>PDF (arxiv)</a></li></ul></div></nav>
+</div>
+<main class="content page-columns page-full" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Data Generation</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Jayjay, Tuna, Jason, Richard </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">September 30, 2024</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="surrogate-modeling-for-which-system" class="level1" data-number="1">
+<h1 data-number="1"><span class="header-section-number">1</span> Surrogate Modeling for Which System?</h1>
+<ol type="1">
+<li>Simplified Geological Carbon Storage (Francis’ paper)</li>
+<li>Incompressible Navier Stokes</li>
+</ol>
+</section>
+<section id="twophase-flow-for-the-co2-saturation" class="level1 page-columns page-full" data-number="2">
+<h1 data-number="2"><span class="header-section-number">2</span> Twophase flow for the CO2 saturation</h1>
+<ul>
+<li>We regenerate Francis’ dataset, and additionally compute Fisher Information Matrix as well.</li>
+<li>For the purpose of validation, we currently form full Fisher Infromation Matrix and then compute eigenvector.</li>
+<li>Our next step will be low rank approximation or trace estimation so that we don’t have to form the full matrix.</li>
+</ul>
+<section id="dataset" class="level2" data-number="2.1">
+<h2 data-number="2.1" class="anchored" data-anchor-id="dataset"><span class="header-section-number">2.1</span> Dataset</h2>
+<p>Our dataset consists of <span class="math inline">\(2000\)</span> pairs of <span class="math inline">\(\{K, S^t(K)\}_{t=1}^8\)</span>.</p>
+<div id="fig-K" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-K-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell-subref quarto-layout-cell" data-ref-parent="fig-K" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div id="fig-surus" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-subfloat-fig figure">
+<div aria-describedby="fig-surus-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="../../data/Ks_0.png" class="img-fluid figure-img" style="width:80.0%" data-ref-parent="fig-K">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-subfloat-caption quarto-subfloat-fig" id="fig-surus-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+(a) K0
+</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell-subref quarto-layout-cell" data-ref-parent="fig-K" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div id="fig-hanno" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-subfloat-fig figure">
+<div aria-describedby="fig-hanno-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="../../data/Ks_1.png" class="img-fluid figure-img" style="width:80.0%" data-ref-parent="fig-K">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-subfloat-caption quarto-subfloat-fig" id="fig-hanno-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+(b) K1
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-K-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;1: Example Permeability Model
+</figcaption>
+</figure>
+</div>
+<div id="fig-S" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-S-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell-subref quarto-layout-cell" data-ref-parent="fig-S" style="flex-basis: 100.0%;justify-content: flex-start;">
+<div id="fig-S0" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-subfloat-fig figure">
+<div aria-describedby="fig-S0-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="../../data/Snew_series.png" class="img-fluid figure-img" style="width:100.0%" data-ref-parent="fig-S">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-subfloat-caption quarto-subfloat-fig" id="fig-S0-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+(a) Time Series of Saturation of K0
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell-subref quarto-layout-cell" data-ref-parent="fig-S" style="flex-basis: 100.0%;justify-content: flex-start;">
+<div id="fig-S1" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-subfloat-fig figure">
+<div aria-describedby="fig-S1-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<img src="../../data/Snew_series1.png" class="img-fluid figure-img" style="width:100.0%" data-ref-parent="fig-S">
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-subfloat-caption quarto-subfloat-fig" id="fig-S1-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+(b) Time Series of Saturation of K1
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-S-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;2: Example Saturation Time Series
+</figcaption>
+</figure>
+</div>
+</section>
+<section id="fisher-information-matrix" class="level2 page-columns page-full" data-number="2.2">
+<h2 data-number="2.2" class="anchored" data-anchor-id="fisher-information-matrix"><span class="header-section-number">2.2</span> Fisher Information Matrix</h2>
+<!-- Define Fisher Information Matrix -->
+<ul>
+<li>To find the optimal number of observations, <span class="math inline">\(M\)</span>, we visualize eigenvector and vector jacobian product.</li>
+<li>We observe that as <span class="math inline">\(M\)</span> increases, the clearer we see the boundary of the permeabiltiy, which will be more informative during training and inference. <a href="#fn1" class="footnote-ref" id="fnref1" role="doc-noteref"><sup>1</sup></a></li>
+<li>Given 1 pair of dataset, <span class="math inline">\(\{K, S^t(K)\}^8_{t=1}\)</span>, we get a single FIM.</li>
+</ul>
+<div class="no-row-height column-margin column-container"><div id="fn1"><p><sup>1</sup>&nbsp;<a href="https://www.overleaf.com/1149716711hxnvfbyfpzvb#a799ce">Note on Learning Problem</a>.</p></div></div><section id="computing-fisher-information-matrix-for-each-datapoint" class="level3" data-number="2.2.1">
+<h3 data-number="2.2.1" class="anchored" data-anchor-id="computing-fisher-information-matrix-for-each-datapoint"><span class="header-section-number">2.2.1</span> Computing Fisher Information Matrix for each datapoint</h3>
+<p>We consider a realistic scenario when we only have access to samples, but not distribution. When <span class="math inline">\(N\)</span> is number of samples and <span class="math inline">\(X \in \mathbb{R}^{d \times d}\)</span>, neural network model <span class="math inline">\(F_{nn}\)</span> learns mapping from <span class="math inline">\(X_i \rightarrow Y_i\)</span>. For each pair of <span class="math inline">\(\left\{X_i, Y_i \right\}^N_{i=1}\)</span>, we generate <span class="math inline">\(\left\{FIM_i\right\}_{i=1}^{N}\)</span>.</p>
+<ul>
+<li><span class="math inline">\(N\)</span> : number of data points, <span class="math inline">\(\left\{X_i, Y_i \right\}\)</span></li>
+<li><span class="math inline">\(M\)</span> : number of observation, <span class="math inline">\(Y\)</span></li>
+</ul>
+<blockquote class="blockquote">
+<p><span class="math display">\[ \left\{ X_i \right\}^N_{i=1} \sim p_X(X), \: \epsilon \sim \mathcal{N}(0, \Sigma), \: \Sigma = I
+\]</span> For a single data pair, we generate multiple observations. <span class="math display">\[Y_{i, J} = F(X_i) + \epsilon_{i, J}, \quad where \left\{ \epsilon_{i,J}\right\}^{N,M}_{i,J= 1,1}\]</span> As we assumed Gaussian, we define likelihood as following. <span class="math display">\[p(Y_{i,J}|X_i) = e^{-\frac{1}{2}\|Y_{i,J}-F(X_i)\|^2_2}\]</span> <span class="math display">\[log \: p(Y_{i,J}|X_i) \approx \frac{1}{\Sigma}\|Y_{i,J}-F(X_i)\|^2_2\]</span> A FIM for a single data pair <span class="math inline">\(i\)</span> is: <span class="math display">\[FIM_i = \mathbb{E}_{Y_{i, \{J\}^m_{i=1}} \sim p(Y_{i,J}|X_i)} \left[ \left(\nabla log \: p(Y_{i,J}|X_i)\right)\left(\nabla log \: p(Y_{i,J}|X_i)\right)^T\right]\]</span></p>
+</blockquote>
+</section>
+<section id="how-does-fim-change-as-number-of-observation-increases" class="level3" data-number="2.2.2">
+<h3 data-number="2.2.2" class="anchored" data-anchor-id="how-does-fim-change-as-number-of-observation-increases"><span class="header-section-number">2.2.2</span> How does FIM change as number of observation increases?</h3>
+<p>FIM is expectation of covariance of derivative of log likelihood. As we expected, we see clearer definition in diagonal relationship as <span class="math inline">\(M\)</span> increases.</p>
+<div id="fig-fim" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-fim-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/FIM/FIM0_sub0.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>M = 1</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/FIM/FIM0_sub0_multi_10.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>M = 10</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/FIM/FIM0_sub0_multi_100.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>M = 100</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-fim-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;3: Change in FIM[:256, :256] of single data pair <span class="math inline">\(\{K, S^t(K)\}^8_{t=1}\)</span> as number of observation, <span class="math inline">\(M\)</span> increases
+</figcaption>
+</figure>
+</div>
+</section>
+<section id="making-sense-of-fim-obtained" class="level3" data-number="2.2.3">
+<h3 data-number="2.2.3" class="anchored" data-anchor-id="making-sense-of-fim-obtained"><span class="header-section-number">2.2.3</span> Making Sense of FIM obtained</h3>
+<blockquote class="blockquote">
+<p>Still, does our FIM make sense? How can we better understand what FIM is representing?</p>
+</blockquote>
+<p>Let’s look at the first row of the FIM and reshape it to [64, 64].</p>
+<div id="fig-fimrow" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-fimrow-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=100/FIM_first_row_multi_100.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>FIM[0,:]</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=100/FIM_sec_row_multi_100.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>FIM[1,:]</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=100/FIM_third_row_multi_100.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>FIM[2,:]</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-fimrow-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;4: Fist, Second, and Third row in FIM
+</figcaption>
+</figure>
+</div>
+<ul>
+<li>Like we expected from the definition of FIM, we observe each plot is just different linear transformation of <span class="math inline">\(\nabla log p(\{S^t\}^8_{t=1}|K)\)</span></li>
+<li>As we will see from below, each rows in FIM is noisy version of its eigenvector.</li>
+</ul>
+</section>
+<section id="how-does-eigenvectors-of-fim-look-like-as-m-increases" class="level3" data-number="2.2.4">
+<h3 data-number="2.2.4" class="anchored" data-anchor-id="how-does-eigenvectors-of-fim-look-like-as-m-increases"><span class="header-section-number">2.2.4</span> How does eigenvectors of FIM look like as <span class="math inline">\(M\)</span> increases?</h3>
+<section id="m-1-single-observation" class="level4" data-number="2.2.4.1">
+<h4 data-number="2.2.4.1" class="anchored" data-anchor-id="m-1-single-observation"><span class="header-section-number">2.2.4.1</span> <span class="math inline">\(M = 1\)</span> (Single Observation)</h4>
+<div id="fig-eig" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-eig-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=1/FIM_1_first_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>First Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=1/FIM_1_sec_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>Second Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=1/FIM_1_third_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>Third Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-eig-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;5: First three largest eigenvector of FIM
+</figcaption>
+</figure>
+</div>
+<ul>
+<li>Even when FIM is computed with single observation, we see that the largest eigenvector has the most definition in the shape of permeability. Rest of eigenvector looks more like noise.</li>
+</ul>
+</section>
+<section id="m-10" class="level4" data-number="2.2.4.2">
+<h4 data-number="2.2.4.2" class="anchored" data-anchor-id="m-10"><span class="header-section-number">2.2.4.2</span> <span class="math inline">\(M = 10\)</span></h4>
+<div id="fig-eig10" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-eig10-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=10/FIM_10_first_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>First Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=10/FIM_10_sec_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>Second Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=10/FIM_10_third_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>Third Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-eig10-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;6: First three largest eigenvector of FIM
+</figcaption>
+</figure>
+</div>
+</section>
+<section id="m-100" class="level4" data-number="2.2.4.3">
+<h4 data-number="2.2.4.3" class="anchored" data-anchor-id="m-100"><span class="header-section-number">2.2.4.3</span> <span class="math inline">\(M = 100\)</span></h4>
+<div id="fig-eig100" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-eig100-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=100/FIM_first_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>First Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=100/FIM_sec_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>Second Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=100/FIM_third_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>Third Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-eig100-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;7: First three largest eigenvector of FIM
+</figcaption>
+</figure>
+</div>
+</section>
+<section id="m-1000" class="level4" data-number="2.2.4.4">
+<h4 data-number="2.2.4.4" class="anchored" data-anchor-id="m-1000"><span class="header-section-number">2.2.4.4</span> <span class="math inline">\(M = 1000\)</span></h4>
+<div id="fig-eig1000" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-eig1000-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=1000/FIM_1000_first_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>First Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=1000/FIM_1000_sec_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>Second Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 33.3%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=1000/FIM_1000_third_eig.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>Third Eigenvector</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-eig1000-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;8: First three largest eigenvector of FIM
+</figcaption>
+</figure>
+</div>
+<ul>
+<li>As <span class="math inline">\(M\)</span> increases, we observe flow through the channel clearer.</li>
+<li>We see the boundary of permeability gets clearer.</li>
+<li>In general, it gets less noisy.</li>
+</ul>
+</section>
+</section>
+<section id="how-does-vector-jacobian-product-look-like-as-m-increases" class="level3" data-number="2.2.5">
+<h3 data-number="2.2.5" class="anchored" data-anchor-id="how-does-vector-jacobian-product-look-like-as-m-increases"><span class="header-section-number">2.2.5</span> How does vector Jacobian product look like as <span class="math inline">\(M\)</span> increases?</h3>
+<div id="fig-eig1000" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-eig1000-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=1/FIM_1_vjp.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>vjp (<span class="math inline">\(M=1\)</span>)</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=10/FIM_10_vjp.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>vjp (<span class="math inline">\(M=10\)</span>)</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=100/FIM_100_vjp.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>vjp (<span class="math inline">\(M=100\)</span>)</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../data/N=1000/FIM_1000_vjp.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>vjp (<span class="math inline">\(M=1000\)</span>)</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-eig1000-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;9: Normalized Vector Jacobian Product when vector is the largest eigenvector
+</figcaption>
+</figure>
+</div>
+<ul>
+<li>We observe that vector Jacobian product looks more like saturation rather than permeability.</li>
+<li>As <span class="math inline">\(M\)</span> increases, scale in color bar also increases.</li>
+<li>One possible conclusion:
+<ul>
+<li>vjp tells us the location in the spatial distribution (likelihood space) where there exists the largest variation, thus have the most information on parameter.</li>
+<li><span class="math inline">\(J^Tv\)</span>, when <span class="math inline">\(v\)</span> is the largest eigenvector of FIM, is projecting Jacobian onto direction of maximum sensitivity.</li>
+</ul></li>
+</ul>
+</section>
+</section>
+</section>
+<section id="incompressible-navier-stokes" class="level1" data-number="3">
+<h1 data-number="3"><span class="header-section-number">3</span> Incompressible Navier Stokes</h1>
+<section id="dataset-1" class="level2" data-number="3.1">
+<h2 data-number="3.1" class="anchored" data-anchor-id="dataset-1"><span class="header-section-number">3.1</span> Dataset</h2>
+<div id="fig-vort" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-vort-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/input.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>Vorticity at <span class="math inline">\(t=0\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/output.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>Vorticity at <span class="math inline">\(t=40\)</span></figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-vort-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;10: The first and the last vorticity in a single time series
+</figcaption>
+</figure>
+</div>
+<p>Our dataset consists of 50 pairs of <span class="math inline">\(\{\varphi^{t-1}(x_0), \varphi^t(x_0)\}^T_{t=1}\)</span>, where <span class="math inline">\(T=44\)</span>. Initial vorticities are a Gaussian Random Fields.</p>
+</section>
+<section id="fisher-information-matrix-1" class="level2" data-number="3.2">
+<h2 data-number="3.2" class="anchored" data-anchor-id="fisher-information-matrix-1"><span class="header-section-number">3.2</span> Fisher Information Matrix</h2>
+<section id="how-do-we-compute-fim" class="level3" data-number="3.2.1">
+<h3 data-number="3.2.1" class="anchored" data-anchor-id="how-do-we-compute-fim"><span class="header-section-number">3.2.1</span> How do we compute FIM?</h3>
+<p><span class="math inline">\(FIM = \left(\nabla log p( \varphi^t(x_0) | \varphi^0(x_0))\right)\left(\nabla log p( \varphi^t(x_0) | \varphi^0(x_0))\right)^T\)</span></p>
+<ul>
+<li>Just means that we are computing FIM with respect to the initial vorticity, <span class="math inline">\(\varphi^t(x_0)\)</span>.</li>
+</ul>
+</section>
+<section id="how-does-fim-looks-like-as-m-changes" class="level3" data-number="3.2.2">
+<h3 data-number="3.2.2" class="anchored" data-anchor-id="how-does-fim-looks-like-as-m-changes"><span class="header-section-number">3.2.2</span> How does FIM looks like as <span class="math inline">\(M\)</span> changes?</h3>
+<div id="fig-fim_NS" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-fim_NS-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10/fim_sub_0_9_t=0.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(M=10\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/100/fim_sub_0_9_t=0.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(M=100\)</span></figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-fim_NS-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;11: FIM[:100, :100] of varying <span class="math inline">\(M\)</span>
+</figcaption>
+</figure>
+</div>
+</section>
+<section id="making-sense-of-fim-obtained-1" class="level3" data-number="3.2.3">
+<h3 data-number="3.2.3" class="anchored" data-anchor-id="making-sense-of-fim-obtained-1"><span class="header-section-number">3.2.3</span> Making Sense of FIM obtained</h3>
+<blockquote class="blockquote">
+<p>Still, does our FIM make sense? How can we better understand what FIM is representing?</p>
+</blockquote>
+<p>Let’s look at the first row of the Fisher Information Matrix and reshape it to [64,64].</p>
+<div id="fig-eig100" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-eig100-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/FIM/past/fim_sub_reshape_0.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>FIM[0, :]</figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 50.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/input.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption>Input Vorticity</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-eig100-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;12: Comparison of the input parameter with the first element of FIM
+</figcaption>
+</figure>
+</div>
+<p>Also, let’s look at how the first row of the FIM changes as time evolves. When <span class="math inline">\(M=10\)</span>,</p>
+<div id="fig-fim_NS" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-fim_NS-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=0.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=1\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=4.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=5\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=9.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=10\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=14.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=15\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=19.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=20\)</span></figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=24.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=25\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=29.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=30\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=34.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=35\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=39.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=40\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=43.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=44\)</span></figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-fim_NS-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;13: The evolution of the first row of FIM
+</figcaption>
+</figure>
+</div>
+<!-- 10/4 update -->
+</section>
+<section id="single-fim-for-single-data-points-in-a-single-time-series" class="level3" data-number="3.2.4">
+<h3 data-number="3.2.4" class="anchored" data-anchor-id="single-fim-for-single-data-points-in-a-single-time-series"><span class="header-section-number">3.2.4</span> Single FIM for single data points in a single time series</h3>
+<p>A single time series, <span class="math inline">\(\{\varphi^{t}(x_0)\}^T_{t=1}\)</span>, consists of multiple data points.</p>
+<p>Given such time series, <img src="../../plot/NS_plot/10/trajx_0.png" class="img-fluid" style="width:100.0%" alt="Example Time Series"></p>
+<p>When <span class="math inline">\(M=10\)</span>, we look at the first row of FIM.</p>
+<div id="fig-fim_NS" class="quarto-layout-panel">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-fim_NS-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10/fim_sub_reshape_0_9_t=0.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=1\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10/fim_sub_reshape_0_9_t=1.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=2\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10/fim_sub_reshape_0_9_t=2.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=3\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10/fim_sub_reshape_0_9_t=3.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=4\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10/fim_sub_reshape_0_9_t=4.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=5\)</span></figcaption>
+</figure>
+</div>
+</div>
+</div>
+<div class="quarto-layout-row">
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10/fim_sub_reshape_0_9_t=5.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=6\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10/fim_sub_reshape_0_9_t=6.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=7\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10/fim_sub_reshape_0_9_t=7.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=8\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10/fim_sub_reshape_0_9_t=8.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=9\)</span></figcaption>
+</figure>
+</div>
+</div>
+<div class="quarto-layout-cell" style="flex-basis: 20.0%;justify-content: flex-start;">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="../../plot/NS_plot/10/fim_sub_reshape_0_9_t=9.png" class="img-fluid figure-img" style="width:100.0%"></p>
+<figcaption><span class="math inline">\(t=10\)</span></figcaption>
+</figure>
+</div>
+</div>
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-fim_NS-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;14: The evolution of the first row of FIM
+</figcaption>
+</figure>
+</div>
+</section>
+<section id="single-fim-for-single-time-series" class="level3" data-number="3.2.5">
+<h3 data-number="3.2.5" class="anchored" data-anchor-id="single-fim-for-single-time-series"><span class="header-section-number">3.2.5</span> Single FIM for single time series</h3>
+<!-- ### Eigenvector
+
+::: {#fig-eigs layout="[[1, 1, 1], [1,1,1], [1,1,1], [1,1,1]]"}
+
+![$N=1$, $v_1$](../../plot/NS_plot/FIM/num_obs=1/1_eigenvec0_0.png){ width=100%}
+
+![$N=1$, $v_2$](../../plot/NS_plot/FIM/num_obs=1/1_eigenvec1_0.png){ width=100%}
+
+![$N=1$, $v_3$](../../plot/NS_plot/FIM/num_obs=1/1_eigenvec2_0.png){ width=100%}
+
+
+![$N=10$, $v_1$](../../plot/NS_plot/FIM/num_obs=10/10_eigenvec0_0.png){ width=100%}
+
+![$N=10$, $v_2$](../../plot/NS_plot/FIM/num_obs=10/10_eigenvec1_0.png){ width=100%}
+
+![$N=10$, $v_3$](../../plot/NS_plot/FIM/num_obs=10/10_eigenvec2_0.png){ width=100%}
+
+
+![$N=100$, $v_1$](../../plot/NS_plot/FIM/num_obs=100/100_eigenvec0_0.png){ width=100%}
+
+![$N=100$, $v_2$](../../plot/NS_plot/FIM/num_obs=100/100_eigenvec1_0.png){ width=100%}
+
+![$N=100$, $v_3$](../../plot/NS_plot/FIM/num_obs=100/100_eigenvec2_0.png){ width=100%}
+
+
+![$N=1000$, $v_1$](../../plot/NS_plot/FIM/num_obs=1000/1000_eigenvec0_0.png){ width=100%}
+
+![$N=1000$, $v_2$](../../plot/NS_plot/FIM/num_obs=1000/1000_eigenvec1_0.png){ width=100%}
+
+![$N=1000$, $v_3$](../../plot/NS_plot/FIM/num_obs=1000/1000_eigenvec2_0.png){ width=100%}
+
+
+First three eigenvectors of FIM of varying $N$.
+:::
+
+- **General Trend**:
+  + The first eigenvector looks very concentrated on certain point and second, third eigenvectors look more noisy. 
+  + Also, the range of scale is bigger in the first eigenvector, and then for the second and third eigenvectors, the magnitude becomes close to 0. 
+
+- **Interpretation of $v_1$**
+  + The gradient of the vorticity will tend to change rapidly in regions where the vorticity field exhibits significant local variation. This typically corresponds to areas where there is a sharp transition between regions of high and low vorticity.
+  + The concentrated point in the first eigenvector, $v_1$, is likely, the point with the biggest spatial variation in terms of vorticity.
+  + Then $v_2$ and $v_3$ focuses on boundaries as well.
+
+- **Interpreting the impact of $N$**
+  + When $N=1$, the concentration point is on the boundary, which is likely not the point with highest varition.  -->
+<!-- ### Vector Jacobian Product
+
+::: {#fig-vjp layout-ncol=3}
+![vjp ($N=1$)](../../plot/NS_plot/FIM/num_obs=1/1_vjp_0.png){ width=100%}
+
+![vjp ($N=10$)](../../plot/NS_plot/FIM/num_obs=10/10_vjp_0.png){ width=100%}
+
+![vjp ($N=100$)](../../plot/NS_plot/FIM/num_obs=100/100_vjp_0.png){ width=100%}
+
+Vector Jacobian Product when vector is the largest eigenvector
+::: -->
+<!-- [^1]: To learn more, read [Quarto](https://www.quarto.org) or visit [Quarto's Github](https://www.github.com/quarto-dev/quarto-cli). -->
+</section>
+</section>
+<section id="future-step" class="level2" data-number="3.3">
+<h2 data-number="3.3" class="anchored" data-anchor-id="future-step"><span class="header-section-number">3.3</span> Future Step</h2>
+<ol type="1">
+<li>TODO: Debug NS eigenvector and vjp.</li>
+<li>TODO: Want to generate the full dataset for Francis’ dataset (which might take 1 or 2 days).</li>
+<li>TODO: Try it on Jason’s dataset (Now that we fixed the problem with FIM computation, we are optimistic about the experiment, so we want to try it again.)</li>
+</ol>
+</section>
+<section id="question" class="level2" data-number="3.4">
+<h2 data-number="3.4" class="anchored" data-anchor-id="question"><span class="header-section-number">3.4</span> Question</h2>
+<ol type="1">
+<li>What would be the optimal number for observations, <span class="math inline">\(M\)</span> when computing Fisher Information Matrix?</li>
+</ol>
+</section>
+</section>
+
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const onCopySuccess = function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  }
+  const getTextToCopy = function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+    text: getTextToCopy
+  });
+  clipboard.on('success', onCopySuccess);
+  if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+    // For code content inside modals, clipBoardJS needs to be initialized with a container option
+    // TODO: Check when it could be a function (https://github.com/zenorocha/clipboard.js/issues/860)
+    const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+      text: getTextToCopy,
+      container: window.document.getElementById('quarto-embedded-source-code-modal')
+    });
+    clipboardModal.on('success', onCopySuccess);
+  }
+    var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+    var mailtoRegex = new RegExp(/^mailto:/);
+      var filterRegex = new RegExp('/' + window.location.host + '/');
+    var isInternal = (href) => {
+        return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+    }
+    // Inspect non-navigation links and adorn them if external
+ 	var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+    for (var i=0; i<links.length; i++) {
+      const link = links[i];
+      if (!isInternal(link.href)) {
+        // undo the damage that might have been done by quarto-nav.js in the case of
+        // links that we want to consider external
+        if (link.dataset.originalHref !== undefined) {
+          link.href = link.dataset.originalHref;
+        }
+      }
+    }
+  function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+    const config = {
+      allowHTML: true,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start',
+    };
+    if (contentFn) {
+      config.content = contentFn;
+    }
+    if (onTriggerFn) {
+      config.onTrigger = onTriggerFn;
+    }
+    if (onUntriggerFn) {
+      config.onUntrigger = onUntriggerFn;
+    }
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      if (note) {
+        return note.innerHTML;
+      } else {
+        return "";
+      }
+    });
+  }
+  const xrefs = window.document.querySelectorAll('a.quarto-xref');
+  const processXRef = (id, note) => {
+    // Strip column container classes
+    const stripColumnClz = (el) => {
+      el.classList.remove("page-full", "page-columns");
+      if (el.children) {
+        for (const child of el.children) {
+          stripColumnClz(child);
+        }
+      }
+    }
+    stripColumnClz(note)
+    if (id === null || id.startsWith('sec-')) {
+      // Special case sections, only their first couple elements
+      const container = document.createElement("div");
+      if (note.children && note.children.length > 2) {
+        container.appendChild(note.children[0].cloneNode(true));
+        for (let i = 1; i < note.children.length; i++) {
+          const child = note.children[i];
+          if (child.tagName === "P" && child.innerText === "") {
+            continue;
+          } else {
+            container.appendChild(child.cloneNode(true));
+            break;
+          }
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(container);
+        }
+        return container.innerHTML
+      } else {
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        return note.innerHTML;
+      }
+    } else {
+      // Remove any anchor links if they are present
+      const anchorLink = note.querySelector('a.anchorjs-link');
+      if (anchorLink) {
+        anchorLink.remove();
+      }
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(note);
+      }
+      // TODO in 1.5, we should make sure this works without a callout special case
+      if (note.classList.contains("callout")) {
+        return note.outerHTML;
+      } else {
+        return note.innerHTML;
+      }
+    }
+  }
+  for (var i=0; i<xrefs.length; i++) {
+    const xref = xrefs[i];
+    tippyHover(xref, undefined, function(instance) {
+      instance.disable();
+      let url = xref.getAttribute('href');
+      let hash = undefined; 
+      if (url.startsWith('#')) {
+        hash = url;
+      } else {
+        try { hash = new URL(url).hash; } catch {}
+      }
+      if (hash) {
+        const id = hash.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note !== null) {
+          try {
+            const html = processXRef(id, note.cloneNode(true));
+            instance.setContent(html);
+          } finally {
+            instance.enable();
+            instance.show();
+          }
+        } else {
+          // See if we can fetch this
+          fetch(url.split('#')[0])
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.getElementById(id);
+            if (note !== null) {
+              const html = processXRef(id, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      } else {
+        // See if we can fetch a full url (with no hash to target)
+        // This is a special case and we should probably do some content thinning / targeting
+        fetch(url)
+        .then(res => res.text())
+        .then(html => {
+          const parser = new DOMParser();
+          const htmlDoc = parser.parseFromString(html, "text/html");
+          const note = htmlDoc.querySelector('main.content');
+          if (note !== null) {
+            // This should only happen for chapter cross references
+            // (since there is no id in the URL)
+            // remove the first header
+            if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+              note.children[0].remove();
+            }
+            const html = processXRef(null, note);
+            instance.setContent(html);
+          } 
+        }).finally(() => {
+          instance.enable();
+          instance.show();
+        });
+      }
+    }, function(instance) {
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            div.style.left = 0;
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+        // Handle positioning of the toggle
+    window.addEventListener(
+      "resize",
+      throttle(() => {
+        elRect = undefined;
+        if (selectedAnnoteEl) {
+          selectCodeLines(selectedAnnoteEl);
+        }
+      }, 10)
+    );
+    function throttle(fn, ms) {
+    let throttle = false;
+    let timer;
+      return (...args) => {
+        if(!throttle) { // first call gets through
+            fn.apply(this, args);
+            throttle = true;
+        } else { // all the others get throttled
+            if(timer) clearTimeout(timer); // cancel #2
+            timer = setTimeout(() => {
+              fn.apply(this, args);
+              timer = throttle = false;
+            }, ms);
+        }
+      };
+    }
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+
+</body></html>

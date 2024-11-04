@@ -1,0 +1,20 @@
+lr: 0.001
+weight_decay: 0.0005
+num_epoch: 1000
+num_train: 2000
+num_test: 400
+num_sample: 2000
+threshold: 1e-08
+batch_size: 100
+loss_type: Sobolev
+nx: 64
+ny: 64
+noise: 0.01
+reg_param: 50.0
+nu: 0.001
+dt: 0.001
+Loss Type: Sobolev
+Batch Size: 100
+Training Loss: 0.05278733465820551
+Test Loss: 2.0677148313552607e-06
+MSE diff: 1.0557466931641102

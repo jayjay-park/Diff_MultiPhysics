@@ -1,0 +1,21 @@
+lr: 0.001
+weight_decay: 0.0005
+num_epoch: 1000
+num_train: 2000
+num_test: 400
+num_sample: 2000
+num_init: 40
+threshold: 1e-08
+batch_size: 20
+loss_type: MSE
+nx: 64
+ny: 64
+noise: 0.01
+reg_param: 50.0
+nu: 0.001
+time_step: 0.05
+Loss Type: MSE
+Batch Size: 20
+Training Loss: 8.347764012484049e-08
+Test Loss: 4.344189858329628e-06
+MSE diff: 8.347764012484049e-06

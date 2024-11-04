@@ -1,0 +1,42 @@
+lr: 0.0005
+weight_decay: 0.0005
+num_epoch: 500
+num_train: 100
+num_test: 50
+num_sample: 100
+threshold: 1e-08
+batch_size: 50
+loss_type: JAC
+nx: 64
+ny: 64
+noise: 0.01
+reg_param: 0.75
+nu: 0.001
+time_step: 0.01
+num_vec: 5
+Loss Type: JAC
+Batch Size: 50
+Training Loss: 2.627573252311777e-07
+Test Loss: 8.273850085060985e-07
+MSE diff: 5.255146504623553e-07
+
+masked 300:
+PBI SSIM Full: 83.93034328497353 PBI forward losses 3.90696877730079e-05 posterior MSE: tensor(35183.8750)
+MSE SSIM Full: 84.0418858442097 MSE forward losses: 4.1167968447552994e-05 posterior MSE: tensor(34945.1953)
+
+masked 200:
+PBI SSIM Full: 83.62084052840329 PBI forward losses 4.6882982132956386e-05 posterior MSE: tensor(35410.5430)
+MSE SSIM Full: 83.67500155845808 MSE forward losses: 4.972149326931685e-05 posterior MSE: tensor(35256.9570)
+
+masked 100: <- lower MSE error
+PBI SSIM Full: 82.83385117539986 PBI forward losses 6.492717511719093e-05 posterior MSE: tensor(36278.4883)
+MSE SSIM Full: 82.8791055848567 MSE forward losses: 6.925593334017321e-05 posterior MSE: tensor(36315.4297)
+
+
+full epoch rather than the best test loss, masked 200:
+PBI SSIM Full: 83.61345314714615 PBI forward losses 4.7256740799639374e-05 posterior MSE: tensor(35633.2891)
+MSE SSIM Full: 83.70145770785899 MSE forward losses: 4.971616726834327e-05 posterior MSE: tensor(35414.0430)
+
+after changing the dataset:
+PBI SSIM Full: 76.49658911641004 PBI forward losses 4.7419594920938835e-05 posterior MSE: tensor(68488.9375)
+MSE SSIM Full: 76.43544387998921 MSE forward losses: 4.959842044627294e-05 posterior MSE: tensor(69859.9688)

@@ -1,0 +1,49 @@
+/* Responsive full-screen background for the title slide */
+.title-slide {
+    background-image: url('images/title_bg.png');
+    background-size: cover; /* Ensures the image covers the screen */
+    background-position: center;
+    background-repeat: no-repeat;
+    color: white;
+    min-height: 100vh; /* Ensures it always takes up the full viewport height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px; /* Adds padding for better readability on smaller screens */
+    box-sizing: border-box;
+  }
+  
+  .title-slide-content {
+    text-align: center;
+    max-width: 80%; /* Keeps the content within a reasonable width on larger screens */
+    background: rgba(0, 0, 0, 0.5); /* Adds a semi-transparent background for readability */
+    padding: 20px;
+    border-radius: 10px;
+  }
+  
+  .title-slide h1 {
+    font-size: 2.5vw; /* Responsive font size based on viewport width */
+    margin: 0;
+  }
+  
+  .title-slide h2 {
+    font-size: 1.5vw; /* Responsive font size */
+    margin: 0;
+  }
+  
+  /* Optional media queries to fine-tune for very small or very large screens */
+  @media (max-width: 600px) {
+    .title-slide h1 {
+      font-size: 6vw;
+    }
+    .title-slide h2 {
+      font-size: 4vw;
+    }
+  }
+  
+  @media (min-width: 1200px) {
+    .title-slide-content {
+      max-width: 50%; /* Limits width on very large screens */
+    }
+  }
+  

@@ -1,0 +1,364 @@
+---
+title: "Experiment Result: Two Phase Flow"
+author:
+  - "Jayjay, Tuna, Jason, Richard"
+date: "9/30/24"
+format:
+  arxiv-pdf:
+    keep-tex: true  
+    linenumbers: false
+    doublespacing: false
+    runninghead: "A Preprint"
+  arxiv-html: default
+  html: 
+    self-contained: true
+    grid: 
+      margin-width: 350px
+execute: 
+  echo: fenced
+reference-location: margin
+lightbox: true
+citation-location: margin
+bibliography: skeleton.bib
+---
+<!-- 
+# Updates
+
+1. **Debugged inference method**
+2. **With the updated inference method, did hyperparameter search, especially with learning rate, $\lambda$**
+3. We were wondering why it seemed like there was not so much improvement. 
+4. **We retrained the model with updated eigenvector** -> refer to Updated Experiment Setting
+5. Loss decreases faster, posterior  -->
+
+We now evaluate surrogate models in two different criteria, forward simulation and inverse problem.
+
+# Pipeline
+
+- **FNO-NF.jl**: create two-phase flow dataset, eigenvector of FIM, and vJp
+  - Now we differentiate each time step saturation, $S^1(K), \cdots S^8(K)$ with respect to $K$
+  - Rather than differentiating $\{S^t(K)\}_{t=1}^8$ with respect to $K$ and repeating it the 8 times.
+- **Diff_MultiPhysics**: train (written in pytorch) and posterior estimation
+
+# Updates on training scheme: respecting the time dynamics of GCS PDE Equation
+
+Before discussing what steps I took to compute $\tilde K$, our MLE estimate, I want to briefly go over new training scheme we tried.
+
+| **Setting**               | **Previous Experiment**                                          | **Updated Experiment**                                          |
+|---------------------------|------------------------------------------------------------------|------------------------------------------------------------------|
+| **Dataset**                | 2000 pairs of $\{K, S^t(K)\}_{t=1}^8$                         | 1000 pairs of $\{K, S^t(K)\}_{t=1}^8$                         |
+|                            | Train/Test split: [1800, 200]                                   | Train/Test split: [800, 200]                                     |
+| **FIM**                    | Number of observations = 10                                     | Number of observations = 2                                       |
+|                            | Number of eigenvectors = 1                                      | Number of eigenvectors = 1                                       |
+|                            | For a single pair of datapoints, 1 FIM is obtained. And we repeat it for 8 times.            | For a single pair of datapoints, 8 FIMs are obtained (for 8 time steps). |
+| **Likelihood**             | Difference between perturbed and true time series $\{S^t(K)\}_{t=1}^8$ | Difference between perturbed and true single time step Saturation for instance, $S^1(K), \cdots S^8(K)$ |
+| **Hyperparameter**         | Batch size = 100                                                | Batch size = 100                                                |
+
+\
+
+Now, for the sake of clarity, I am going to call:
+
+- eigenvector obtained from the full time series (or across all time steps), **static eigenvector** as it does not evolve over time.
+- eigenvector obtained from each time step, **dynamic eigenvector** as it reflects how the system's dynamics evolve.
+
+\
+
+In case we need to recall how we computed FIM..
+
+> $$ \left\{ X_i \right\}^N_{i=1} \sim p_X(X), \: \epsilon \sim \mathcal{N}(0, \Sigma), \: \Sigma = I
+> $$ For a single data pair, we generate multiple observations. $$Y_{i, J} = F(X_i) + \epsilon_{i, J}, \quad where \left\{ \epsilon_{i,J}\right\}^{N,M}_{i,J= 1,1}$$ As we assumed Gaussian, we define likelihood as following. $$p(Y_{i,J}|X_i) = e^{-\frac{1}{2}\|Y_{i,J}-F(X_i)\|^2_2}$$ $$log \: p(Y_{i,J}|X_i) \approx \frac{1}{\Sigma}\|Y_{i,J}-F(X_i)\|^2_2$$ A FIM for a single data pair $i$ is: $$FIM_i = \mathbb{E}_{Y_{i, \{J\}^m_{i=1}} \sim p(Y_{i,J}|X_i)} \left[ \left(\nabla log \: p(Y_{i,J}|X_i)\right)\left(\nabla log \: p(Y_{i,J}|X_i)\right)^T\right]$$
+
+
+# Forward Simulation
+
+So, now we compare how the learning becomes different when compared with 
+
+- that of static eigenvector 
+- that of dynamic eigenvector, respecting the time dynamics of GCS PDE equation.
+
+Like before, we evaluate the training result of PBI model:
+
+1. Loss behavior
+2. Forward simulation
+3. Inversion
+
+## How does changed eigenvector look like?
+
+![Static eigenvector](../../plot/GCS_channel_plot/training/JAC_0.5/true_eigvec_1.png){width="100%"}
+
+![Dynamic eigenvector](../../plot/GCS_channel_plot/training/JAC/true_eigvec_1.png){width="100%"}
+
+
+## How does it impact training?
+
+When we look at the test loss, we observe that unlike static model, dynamic model's test curve is always lower than that of MSE model.
+
+::: {#fig-loss layout="[1, 1]"}
+![Loss (static)](../../test/all_loss_prev_same_eig.png){width="100%"}
+
+![Loss (dynamic)](../../test/all_loss.png){width="100%"}
+
+Loss plot static vs dynamic
+
+:::
+
+
+|               | Epochs | $\lambda$ | Train Loss               | Test Loss               |
+|---------------|---------|---------|------------------------|------------------------|
+|               |     |     |MSE/GM                   | MSE                      |
+| FNO-MSE    | 1000 | N.A. |$6.5207 \times 10^{-8}$   | $1.3088 \times 10^{-7}$   |
+| FNO-PBI    | 1000 | 1.0 |$8.3925 \times 10^{-8}$   | $1.3030\times 10^{-7}$   |
+
+## Forward Simulation on Test dataset
+
+<!-- run GCS_channel_test -->
+::: {#fig-eig1000 layout="[[1], [1],[1]]"}
+![True Saturation](../../plot/GCS_channel_plot/FNO_GCS_lowest_MSE_True.png){width="100%"}
+
+![Predicted Saturation: MSE](../../plot/GCS_channel_plot/FNO_GCS_lowest_MSE_Pred.png){width="100%"}
+
+![Predicted Saturation: PBI (dynamic)](../../plot/GCS_channel_plot/FNO_GCS_lowest_JAC_Pred.png){width="100%"}
+
+Example of Forward Prediction
+
+:::
+
+::: {#fig-eig1000 layout="[[1], [1],[1]]"}
+
+![Test Sample 1](../../gen_sample/GCS_sample/forward_pred_test_diff1.png){width="100%"}
+
+![Test Sample 2](../../gen_sample/GCS_sample/forward_pred_test_diff2.png){width="100%"}
+
+![Test Sample 3](../../gen_sample/GCS_sample/forward_pred_test_diff3.png){width="100%"}
+
+Absolute Difference (x 5) plot of test samples
+
+:::
+
+## Sanity check: how does vJp of MSE model and PBI model look like?
+
+![Dynamic vJp (True)](../../plot/GCS_channel_plot/training/JAC/true_vjp_1.png){width="100%"}
+
+![Learned vJp (MSE)](../../plot/GCS_channel_plot/training/MSE/learned_vjp_990.png){width="100%"}
+
+![Abs Diff in vJp (MSE)](../../plot/GCS_channel_plot/training/MSE/diff_vjp_990.png){width="100%"}
+
+![Learned vJp (PBI)](../../plot/GCS_channel_plot/training/JAC/learned_vjp_990.png){width="100%"}
+
+![Abs Diff in vJp (PBI)](../../plot/GCS_channel_plot/training/JAC/diff_vjp_990.png){width="100%"}
+
+
+# Inverse
+
+Previously, we showed MLE estimate of $\tilde K$. 
+
+- The inversion result looked too good to be true.
+- This is because initial $K_0$ is unperturbed true $K$, so there was nothing to optimize upon.
+- So now we perturbed $K_0$ like Francis did.
+
+## Setting
+
+We wanted to evaluate surrogate model's performace in MLE/posterior estimation quickly, so for now, we kept inversion method as simple as possible. (least squares method)
+
+> $min_{K} \|S_{\theta}(K) - S(K)\|_2^2$
+> 
+> where:
+>
+> - $K_0$ = $H(K)$
+> - $S_{\theta}$: Neural Network model
+
+\
+
+- We obtain 100 $\{S^t(K)\}_{t=1}^8$ from test data.
+- We generate $H(K_0)$ by averaging over all $K_0$ where $H$ is observation operator.
+
+Now we look at two different cases:
+
+1. static
+2. dynamic
+
+## Loss
+
+With dynamic eigenvector, the loss during inversion falls under that of MSE model.
+
+![Loss (static)](../../gen_sample/GCS_partial/both_0/loss_plot_100.0_200_same_eig.png){width="100%"}
+
+![Loss (dynamic)](../../gen_sample/GCS_partial/both_0/loss_plot_100.0_200.png){width="100%"}
+
+
+## Ablation test: finding optimal lambda and number of epoch
+
+
+### Choosing the best parameters for MLE optimization
+
+We conduct hyperparameter search for the $\lambda$. The number of epochs chosen were based on the loss plot convergence. If it converged, we stopped training.
+
+This is unconstrained.
+
+<!-- | FNO-PBI    | 800 | 1.0 |$4.2823 \times 10^{-4}$   | $63.8013$   | -->
+<!-- | FNO-MSE    | 800 | 1.0 |$3.0692 \times 10^{-4}$   | $57.3091$   | -->
+
+#### Unconstrained (static)
+
+|               | Epochs | $\lambda$ | Loss (MSE)              | SSIM              |
+|---------------|---------|---------|------------------------|----------------|
+| FNO-PBI    | 400 | 20.0 |$8.9021 \times 10^{-5}$   | $0.5550$   |
+| FNO-PBI    | 300 | 50.0 |$6.1867 \times 10^{-5}$   | $0.5555$   |
+| FNO-PBI    | 200 | 100.0 |$5.5757 \times 10^{-5}$   | $0.5709$   |
+|---------------|---------|---------|------------------------|----------------|
+| FNO-MSE    | 400 | 20.0 |$5.3901 \times 10^{-5}$   | $0.5235$   |
+| FNO-MSE    | 300 | 50.0 |$3.4602 \times 10^{-5}$   | $0.5428$   |
+| FNO-MSE    | 200 | 100.0 |$2.9429 \times 10^{-5}$   | $0.5564$   |
+<!-- 
+#### Unconstrained (dynamic)
+
+|               | Epochs | $\lambda$ | Loss (MSE)              | SSIM              |
+|---------------|---------|---------|------------------------|----------------|
+| FNO-PBI    | 400 | 20.0 |$8.9021 \times 10^{-5}$   | $0.5550$   |
+| FNO-PBI    | 300 | 50.0 |$6.1867 \times 10^{-5}$   | $0.5555$   |
+| FNO-PBI    | 200 | 100.0 |$5.5757 \times 10^{-5}$   | $0.5709$   |
+|---------------|---------|---------|------------------------|----------------|
+| FNO-MSE    | 400 | 20.0 |$5.3901 \times 10^{-5}$   | $0.5235$   |
+| FNO-MSE    | 300 | 50.0 |$3.4602 \times 10^{-5}$   | $0.5428$   |
+| FNO-MSE    | 200 | 100.0 |$2.9429 \times 10^{-5}$   | $0.5564$   | -->
+
+
+
+### Updated Result
+
+Out of all 100 test samples, I brought some interesting cases. Some looks good, some looks questionable. (Test sample 3, 5). Does SSIM values make sense here?
+
+![Test sample 1 (static)](../../gen_sample/GCS_partial/both_0_100.0_same_eig/posterior_199_0_84.png){width="100%"}
+
+![Test sample 2 (static)](../../gen_sample/GCS_partial/both_0_100.0_same_eig/posterior_199_0_67.png){width="100%"}
+
+![Test sample 3 (static)](../../gen_sample/GCS_partial/both_0_100.0_same_eig/posterior_199_0_89.png){width="100%"}
+
+![Test sample 4 (static)](../../gen_sample/GCS_partial/both_0_100.0_same_eig/posterior_199_0_85.png){width="100%"}
+
+![Test sample 5 (static)](../../gen_sample/GCS_partial/both_0_100.0_same_eig/posterior_199_0_90.png){width="100%"}
+
+
+
+### What other things can be evaluated in terms of forward simulation?
+
+1. **Stability**: predict longer saturation evolution 9th to 16th.
+2. **Generalization**: test with out of distribution test samples.
+3. **Towards learning true governing PDE equation**: One step prediction rather than multi-step prediction
+  - Current one is time discretized.
+
+# Conclusion
+
+- As of right now, we don't see significant difference between MSE and PBI model in terms of posterior estimate.
+    - It is likely undertrained.
+
+
+
+
+
+# Updates:
+
+- To train FNO with multiple eigenvectors, have been generating dataset. For 1000 data points, we are obtaining the first 20 eigenvectors.
+- However, number of observation is 20 (before it was 2) to get the FIM and we call Zygote.pullback 20 times per sample to get vJp, so it takes some time.
+- We also had some debugged some code issues.
+- So right now, tested with 
+  - 100 training sample, 
+  - 50 test samples
+  - 500 epochs.
+- And we show preliminary results with 3 different scenarios: when number of vector is 1, 3, 5.
+
+![Dynamic Eigenvector with num obs=20](../../plot/GCS_channel_vec_3/training/JAC/true_vjp_1.png){width="100%"}
+
+## Forward Simulation on Test Dataset
+
+|               | number of $\vec{x}$ | $\lambda$ | Train Loss               | Test Loss               |
+|---------------|-----------|---------|------------------------|------------------------|
+|               |     |     |MSE/GM                   | MSE                      |
+| FNO-MSE    | N.A. | N.A. |$2.0915 \times 10^{-7}$   | $8.08192 \times 10^{-7}$   |
+| FNO-PBI    | 1 | 0.65 |$3.8140 \times 10^{-7}$   | $8.0472\times 10^{-7}$   |
+| FNO-PBI    | 3 | 0.65 |$3.0985 \times 10^{-7}$   | $8.2933\times 10^{-7}$   |
+| FNO-PBI    | 5 | 0.65 |$2.6275 \times 10^{-7}$   | $8.2738\times 10^{-7}$   |
+
+
+::: {#fig-eig1000 layout="[[1], [1]]"}
+![All](../../test/all_loss_1.png){width="100%"}
+
+![GM term](../../test/PBI_term_1.png){width="100%"}
+
+When number of eigenvector = 1
+
+:::
+
+::: {#fig-eig1000 layout="[[1], [1]]"}
+![All](../../test/all_loss_3.png){width="100%"}
+
+![GM term](../../test/PBI_term_3.png){width="100%"}
+
+When number of eigenvector = 3
+
+:::
+
+::: {#fig-eig1000 layout="[[1], [1]]"}
+![All](../../test/all_loss_5.png){width="100%"}
+
+![GM term](../../test/PBI_term_5.png){width="100%"}
+
+When number of eigenvector = 5
+
+:::
+
+## MLE Estimate vs Number of Eigenvector
+
+Computed over 100 test samples.
+
+|               | number of $\vec{x}$ | SSIM | Forward Loss in MSE              | MSE($\hat \theta$)               |
+|---------------|-----------|---------|------------------------|------------------------|
+| FNO-MSE    | N.A. | $0.7644$ | $4.9598 \times 10^{-5}$   | $698.5997$  |
+| FNO-PBI    | 1 | $0.7667$ |$4.6305 \times 10^{-5}$   | $667.3286$   |
+| FNO-PBI    | 3 | $0.7670$ |$4.7811 \times 10^{-5}$   | $676.3323$   |
+| FNO-PBI    | 5 | $0.7650$ |$4.7420 \times 10^{-5}$   | $684.8894$   |
+
+![Test sample 1 (dynamic, vec=1)](../../gen_sample/GCS_partial/vec=1/lr=100.0/posterior_0_199_0_91.png){width="100%"}
+
+![Test sample 1 (dynamic, vec=3)](../../gen_sample/GCS_partial/vec=3/lr=100.0/posterior_0_199_0_92.png){width="100%"}
+
+![Test sample 1 (dynamic, vec=3)](../../gen_sample/GCS_partial/vec=3/lr=100.0/posterior_0_199_0_9.png){width="100%"}
+
+![Test sample 1 (dynamic, vec=5)](../../gen_sample/GCS_partial/vec=5/lr=100.0/posterior_0_199_0_4.png){width="100%"}
+
+![Test sample 1 (dynamic, vec=5)](../../gen_sample/GCS_partial/vec=5/lr=100.0/posterior_0_199_0_5.png){width="100%"}
+
+
+## Some comments on these mediocre results
+
+1. Practicality of our method for learning simplified GCS problem (multi-step prediction).
+2. Information that MSE term and Gradient matching term are giving is overlapping.
+
+## Side note: testing with one step prediction
+
+1. I thought we might show bigger improvement for one step prediction problem.
+2. Or it might be worth looking at structure-preserving.
+
+## Other comment
+
+Will try to finish draft for ML4seismic presentation by Saturday.
+
+<!-- Updates:
+SSIM: "Francis paper" -->
+
+<!-- ## When Random Variable of FIM, $Y$, is only Pressure
+We also compute FIM of pressure only.
+
+### FIM obtained
+
+### The Each Rows of FIM
+
+### Eigenvector of FIM
+
+### Vector Jacobian Product Obtained -->
+
+
+## Future Step
+
+1.  TODO: Debug NS eigenvector and vjp.
+2.  TODO: Want to generate the full dataset for Francis' dataset (which might take 1 or 2 days).
+3.  TODO: Try it on Jason's dataset (Now that we fixed the problem with FIM computation, we are optimistic about the experiment, so we want to try it again.)
