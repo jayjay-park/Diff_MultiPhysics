@@ -36,6 +36,8 @@ plot/GCS_channel_vec_5/
 plot/GCS_channel_vec_7/
 plot/GCS_channel_vec_10/training/JAC_train=50/
 plot/GCS_channel_vec_10/*.png
+!plot/GCS_channel_vec_10/
+
 plot/GCS_channel_vec_10/training/JAC/*.png
 !plot/GCS_channel_vec_10/training/JAC/
 plot/GCS_channel_vec_15/
@@ -57,7 +59,7 @@ test_result/Time/*
 !test_result/Time/
 test_result/*.txt
 test_result/*.png
-!gen_sample/num_obs_20
+!gen_sample/num_obs_20/
 gen_sample/GCS_sample/*.png
 !gen_sample/GCS_sample/
 gen_sample/GCS_partial/both_0_100.0/*.png
