@@ -591,10 +591,10 @@ if __name__ == "__main__":
     parser.add_argument("--num_epoch", type=int, default=200)
     parser.add_argument("--num_train", type=int, default=200)
     parser.add_argument("--num_test", type=int, default=50)
-    parser.add_argument("--num_sample", type=int, default=100)
+    parser.add_argument("--num_sample", type=int, default=200)
     # parser.add_argument("--num_init", type=int, default=60)
     parser.add_argument("--threshold", type=float, default=1e-8)
-    parser.add_argument("--batch_size", type=int, default=5)
+    parser.add_argument("--batch_size", type=int, default=20)
     parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
@@ -634,9 +634,9 @@ if __name__ == "__main__":
     # Read the each file s_idx: sample index
     for s_idx in range(1, args.num_train+args.num_test+1):
 
-        with h5py.File(f'../FNO-NF.jl/scripts/num_obs_20/states_sample_{s_idx}_nobs_20.jld2', 'r') as f1, \
-            h5py.File(f'../FNO-NF.jl/scripts/num_obs_20/FIM_eigvec_sample_{s_idx}_nobs_20.jld2', 'r') as f2, \
-            h5py.File(f'../FNO-NF.jl/scripts/num_obs_20/FIM_vjp_sample_{s_idx}_nobs_20.jld2', 'r') as f3:
+        with h5py.File(f'../gen_sample/num_obs_20/states_sample_{s_idx}_nobs_20.jld2', 'r') as f1, \
+            h5py.File(f'../gen_sample/num_obs_20/FIM_eigvec_sample_{s_idx}_nobs_20.jld2', 'r') as f2, \
+            h5py.File(f'../gen_sample/num_obs_20/FIM_vjp_sample_{s_idx}_nobs_20.jld2', 'r') as f3:
 
             # print("f1 Keys: %s" % f1.keys()) #<KeysViewHDF5 ['single_stored_object']>
             # S = f1['single_stored_object'][:] # len: 8 x 64
