@@ -1,0 +1,397 @@
+---
+title: "Data Generation: Two Phase Flow"
+author:
+  - "Jayjay, Tuna, Jason, Richard"
+date: "9/30/24"
+format:
+  arxiv-pdf:
+    keep-tex: true  
+    linenumbers: false
+    doublespacing: false
+    runninghead: "A Preprint"
+  arxiv-html: default
+  html: 
+    self-contained: true
+    grid: 
+      margin-width: 350px
+execute: 
+  echo: fenced
+reference-location: margin
+citation-location: margin
+bibliography: skeleton.bib
+---
+
+# Surrogate Modeling for Which System?
+
+1.  Simplified Geological Carbon Storage (Francis' paper)
+2.  Incompressible Navier Stokes
+
+# Twophase flow for the CO2 saturation
+
+-   We regenerate Francis' dataset, and additionally compute Fisher Information Matrix as well.
+-   For the purpose of validation, we currently form full Fisher Infromation Matrix and then compute eigenvector.
+-   Our next step will be low rank approximation or trace estimation so that we don't have to form the full matrix.
+
+# Dataset
+
+Our dataset consists of $2000$ pairs of $\{K, S^t(K)\}_{t=1}^8$.
+
+::: {#fig-K layout-ncol="2"}
+![K0](../../data/Ks_0.png){#fig-surus width="80%"}
+
+![K1](../../data/Ks_1.png){#fig-hanno width="80%"}
+
+Example Permeability Model
+:::
+
+::: {#fig-S layout-nrow="2"}
+![Time Series of Saturation of K0](../../data/Snew_series.png){#fig-S0 width="100%"}
+
+![Time Series of Saturation of K1](../../data/Snew_series1.png){#fig-S1 width="100%"}
+
+Example Saturation Time Series
+:::
+
+# Fisher Information Matrix
+
+<!-- Define Fisher Information Matrix -->
+
+-   To find the optimal number of observations, $M$, we visualize eigenvector and vector jacobian product.
+-   Given 1 pair of dataset, $\{K, S^t(K)\}^8_{t=1}$, we get a single FIM.
+
+[^1]: [Note on Learning Problem](https://www.overleaf.com/1149716711hxnvfbyfpzvb#a799ce).
+
+## Computing Fisher Information Matrix for each datapoint
+
+We consider a realistic scenario when we only have access to samples, but not distribution. When $N$ is number of samples and $X \in \mathbb{R}^{d \times d}$, neural network model $F_{nn}$ learns mapping from $X_i \rightarrow Y_i$. For each pair of $\left\{X_i, Y_i \right\}^N_{i=1}$, we generate $\left\{FIM_i\right\}_{i=1}^{N}$.
+
+-   $N$ : number of data points, $\left\{X_i, Y_i \right\}$
+-   $M$ : number of observation, $Y$
+
+> $$ \left\{ X_i \right\}^N_{i=1} \sim p_X(X), \: \epsilon \sim \mathcal{N}(0, \Sigma), \: \Sigma = I
+> $$ For a single data pair, we generate multiple observations. $$Y_{i, J} = F(X_i) + \epsilon_{i, J}, \quad where \left\{ \epsilon_{i,J}\right\}^{N,M}_{i,J= 1,1}$$ As we assumed Gaussian, we define likelihood as following. $$p(Y_{i,J}|X_i) = e^{-\frac{1}{2}\|Y_{i,J}-F(X_i)\|^2_2}$$ $$log \: p(Y_{i,J}|X_i) \approx \frac{1}{\Sigma}\|Y_{i,J}-F(X_i)\|^2_2$$ A FIM for a single data pair $i$ is: $$FIM_i = \mathbb{E}_{Y_{i, \{J\}^m_{i=1}} \sim p(Y_{i,J}|X_i)} \left[ \left(\nabla log \: p(Y_{i,J}|X_i)\right)\left(\nabla log \: p(Y_{i,J}|X_i)\right)^T\right]$$
+
+
+## When Random Variable of FIM, $Y$, is both Saturation and Pressure
+
+### How does FIM change as number of observation increases?
+
+-   FIM is expectation of covariance of derivative of log likelihood. As we expected, we see clearer definition in diagonal relationship as $M$ increases.
+-   We observe that as $M$ increases, the clearer we see the boundary of the permeability, which will be more informative during training and inference. [^1]
+
+::: {#fig-fim layout-ncol="3"}
+![M = 1](../../data/FIM/FIM0_sub0.png){width="100%"}
+
+![M = 10](../../data/FIM/FIM0_sub0_multi_10.png){width="100%"}
+
+![M = 100](../../data/FIM/FIM0_sub0_multi_100.png){width="100%"}
+
+Change in FIM\[:256, :256\] of single data pair $\{K, S^t(K)\}^8_{t=1}$ as number of observation, $M$ increases
+:::
+
+### Making Sense of FIM obtained
+
+> Still, does our FIM make sense? How can we better understand what FIM is representing?
+
+Let's look at the first row of the FIM and reshape it to \[64, 64\].
+
+::: {#fig-fimrow layout-ncol="3"}
+![FIM\[0,:\]](../../data/N=100/FIM_first_row_multi_100.png){width="100%"}
+
+![FIM\[1,:\]](../../data/N=100/FIM_sec_row_multi_100.png){width="100%"}
+
+![FIM\[2,:\]](../../data/N=100/FIM_third_row_multi_100.png){width="100%"}
+
+Fist, Second, and Third row in FIM
+:::
+
+-   Like we expected from the definition of FIM, we observe each plot is just different linear transformation of $\nabla log p(\{S^t\}^8_{t=1}|K)$
+-   As we will see from below, each rows in FIM is noisy version of its eigenvector.
+
+### How does eigenvectors of FIM look like as $M$ increases?
+
+#### $M = 1$ (Single Observation)
+
+::: {#fig-eig layout-ncol="3"}
+![First Eigenvector](../../data/N=1/FIM_1_first_eig.png){width="100%"}
+
+![Second Eigenvector](../../data/N=1/FIM_1_sec_eig.png){width="100%"}
+
+![Third Eigenvector](../../data/N=1/FIM_1_third_eig.png){width="100%"}
+
+First three largest eigenvector of FIM
+:::
+
+-   Even when FIM is computed with single observation, we see that the largest eigenvector has the most definition in the shape of permeability. Rest of eigenvector looks more like noise.
+
+#### $M = 10$
+
+::: {#fig-eig10 layout-ncol="3"}
+![First Eigenvector](../../data/N=10/FIM_10_first_eig.png){width="100%"}
+
+![Second Eigenvector](../../data/N=10/FIM_10_sec_eig.png){width="100%"}
+
+![Third Eigenvector](../../data/N=10/FIM_10_third_eig.png){width="100%"}
+
+First three largest eigenvector of FIM
+:::
+
+#### $M = 100$
+
+::: {#fig-eig100 layout-ncol="3"}
+![First Eigenvector](../../data/N=100/FIM_first_eig.png){width="100%"}
+
+![Second Eigenvector](../../data/N=100/FIM_sec_eig.png){width="100%"}
+
+![Third Eigenvector](../../data/N=100/FIM_third_eig.png){width="100%"}
+
+First three largest eigenvector of FIM
+:::
+
+#### $M = 1000$
+
+::: {#fig-eig1000 layout-ncol="3"}
+![First Eigenvector](../../data/N=1000/FIM_1000_first_eig.png){width="100%"}
+
+![Second Eigenvector](../../data/N=1000/FIM_1000_sec_eig.png){width="100%"}
+
+![Third Eigenvector](../../data/N=1000/FIM_1000_third_eig.png){width="100%"}
+
+First three largest eigenvector of FIM
+:::
+
+-   As $M$ increases, we observe flow through the channel clearer.
+-   We see the boundary of permeability gets clearer.
+-   In general, it gets less noisy.
+
+### How does vector Jacobian product look like as $M$ increases?
+
+::: {#fig-eig1000 layout="[[1, 1], [1,1]]"}
+![vjp ($M=1$)](../../data/N=1/FIM_1_vjp.png){width="100%"}
+
+![vjp ($M=10$)](../../data/N=10/FIM_10_vjp.png){width="100%"}
+
+![vjp ($M=100$)](../../data/N=100/FIM_100_vjp.png){width="100%"}
+
+![vjp ($M=1000$)](../../data/N=1000/FIM_1000_vjp.png){width="100%"}
+
+Normalized Vector Jacobian Product when vector is the largest eigenvector
+:::
+
+-   We observe that vector Jacobian product looks more like saturation rather than permeability.
+-   As $M$ increases, scale in color bar also increases.
+-   One possible conclusion:
+    -   vjp tells us the location in the spatial distribution (likelihood space) where there exists the largest variation, thus have the most information on parameter.
+    -   $J^Tv$, when $v$ is the largest eigenvector of FIM, is projecting Jacobian onto direction of maximum sensitivity.
+
+
+
+
+## When Random Variable of FIM, $Y$, is only Saturation
+After updating the code, we compute FIM of saturation only.
+
+### FIM obtained
+
+- We observe that we see off-diagonal structure in this Fisher Information Matrix.
+- This just means that that are dependency or stronger correlation between parameters.
+- This might be due to the structure of permeability being heterogenous, where point outside the channel does not impact saturation at all. 
+
+::: {#fig-fim layout="[1, 1,1,1]"}
+![$M = 1$](../../data/Saturation_M=1/fim.png){width="100%"}
+
+![$M = 10$](../../data/Saturation_M=10/fim.png){width="100%"}
+
+![$M = 100$](../../data/Saturation_M=100/fim.png){width="100%"}
+
+![$M = 1000$](../../data/Saturation_M=100/fim.png){width="100%"}
+
+FIM[:256, :256] of different $M$
+:::
+
+### The Each Rows of FIM
+
+Each row of FIM can be considered as some linear combination of gradient.
+Each row represents each grid point of permeability that is perturbed, and the plot we are seeing shows how likelihood changes when the certain grid point of permeability is perturbed.
+
+When $M=1$,
+
+::: {#fig-eig1000 layout="[1, 1,1]"}
+![$i = 1$](../../data/Saturation_M=1/fim_1strow.png){width="100%"}
+
+![$i = 500$](../../data/Saturation_M=1/fim_500throw.png){width="100%"}
+
+![$i = 2000$](../../data/Saturation_M=1/fim_2000throw.png){width="100%"}
+
+FIM of each rows when $M=1$
+:::
+
+When $M=10$,
+
+::: {#fig-eig1000 layout="[1, 1,1]"}
+![$i = 1$](../../data/Saturation_M=10/fim_1strow.png){width="100%"}
+
+![$i = 500$](../../data/Saturation_M=10/fim_500throw.png){width="100%"}
+
+![$i = 2000$](../../data/Saturation_M=10/fim_2000throw.png){width="100%"}
+
+FIM of each rows when $M=10$
+:::
+
+When $M=100$,
+
+::: {#fig-eig1000 layout="[1, 1,1]"}
+![$i = 1$](../../data/Saturation_M=100/fim_1strow.png){width="100%"}
+
+![$i = 500$](../../data/Saturation_M=100/fim_500throw.png){width="100%"}
+
+![$i = 2000$](../../data/Saturation_M=100/fim_2000throw.png){width="100%"}
+
+FIM of each rows when $M=100$
+:::
+
+When $M=1000$,
+
+::: {#fig-eig1000 layout="[1, 1,1]"}
+![$i = 1$](../../data/Saturation_M=1000/fim_1strow.png){width="100%"}
+
+![$i = 500$](../../data/Saturation_M=1000/fim_500throw.png){width="100%"}
+
+![$i = 2000$](../../data/Saturation_M=1000/fim_2000throw.png){width="100%"}
+
+FIM of each rows when $M=1000$
+:::
+
+### Eigenvector of FIM
+::: {#fig-eig1000 layout="[1, 1,1,1]"}
+![$M = 1$](../../data/Saturation_M=1/eigvec_1st.png){width="100%"}
+
+![$M = 10$](../../data/Saturation_M=10/eigvec_1st.png){width="100%"}
+
+![$M = 100$](../../data/Saturation_M=100/eigvec_1st.png){width="100%"}
+
+![$M = 1000$](../../data/Saturation_M=1000/eigvec_1st.png){width="100%"}
+
+The largest eigenvector of FIM of different $M$
+:::
+
+### Vector Jacobian Product Obtained
+
+### Eigenvector of FIM
+
+::: {#fig-eig1000 layout="[1, 1,1,1]"}
+![$M = 1$](../../data/Saturation_M=1/vjp.png){width="100%"}
+
+![$M = 10$](../../data/Saturation_M=10/vjp.png){width="100%"}
+
+![$M = 100$](../../data/Saturation_M=100/vjp.png){width="100%"}
+
+![$M = 1000$](../../data/Saturation_M=1000/vjp.png){width="100%"}
+
+The largest eigenvector of FIM of different $M$
+:::
+
+# Training Result
+We first training with following configuration:
+
+- Training , Test = [1800, 200]
+- Batch size = 100
+- Number of Epoch = 1000
+
+
+|               | Train Loss               | Test Loss               |
+|---------------|--------------------------|--------------------------|
+|               | MSE/GM                   | MSE                      |
+| $FNO_{MSE}$   | $3.3622 \times 10^{-8}$   | $8.4016 \times 10^{-8}$   |
+| $FNO_{GM}$    | $2.6428 \times 10^{-7}$   | $1.5976 \times 10^{-7}$   |
+
+: Loss Table
+
+::: {#fig-loss layout="[1, 1]"}
+![All loss](../../test/all_loss.png){width="100%"}
+
+![Only GM Term](../../test/GM_term.png){width="100%"}
+
+Loss plots
+:::
+
+## MSE
+
+<!-- Training Loss: 3.3622398297615696e-08
+Test Loss: 8.401644535638297e-08 -->
+<!-- MSE diff: 6.052031693570825e-07 -->
+
+<!-- ### Loss
+
+![MSE Training Loss](../../plot/Loss/FNO_GCS_channel_MSE.png){width="50%"} -->
+
+### Forward Simulation
+
+![True Saturation](../../plot/GCS_channel_plot/FNO_GCS_lowest_MSE_True.png){width="100%"}
+
+![Predicted Saturation](../../plot/GCS_channel_plot/FNO_GCS_lowest_MSE_Pred.png){width="100%"}
+
+![Absolute Difference](../../plot/GCS_channel_plot/FNO_GCS_lowest_MSE_diff.png){width="100%"}
+
+### Learned and True vjp when just trained with MSE
+
+We observe
+
+1. Scale in the color bar does not match.
+2. The learned vjp looks noisy as there are some colors showing in the part where it should be just white.
+
+![True vjp](../../plot/GCS_channel_plot/training/MSE/true_vjp_1.png){width="100%"}
+
+![Learned vjp](../../plot/GCS_channel_plot/training/MSE/learned_vjp_990.png){width="100%"}
+
+![Absolute Difference](../../plot/GCS_channel_plot/training/MSE/diff_vjp_990.png){width="100%"}
+
+
+## Gradient-Matching 
+
+<!-- ### Loss
+
+![GM Training Loss](../../plot/Loss/FNO_GCS_channel_JAC.png){width="50%"} -->
+
+### Forward Simulation
+
+![True Saturation](../../plot/GCS_channel_plot/FNO_GCS_lowest_JAC_True.png){width="100%"}
+
+![Predicted Saturation](../../plot/GCS_channel_plot/FNO_GCS_lowest_JAC_Pred.png){width="100%"}
+
+![Absolute Difference](../../plot/GCS_channel_plot/FNO_GCS_lowest_JAC_diff.png){width="100%"}
+
+### Learned and True vjp
+
+We now observe that the learned and the true vjp matches well.
+Unlike MSE model, we observe
+
+1. The scale of color bar matches correctly.
+2. The plot does not look noisy.
+
+![True vjp](../../plot/GCS_channel_plot/training/JAC/true_vjp_1.png){width="100%"}
+
+![Learned vjp](../../plot/GCS_channel_plot/training/JAC/learned_vjp_990.png){width="100%"}
+
+![Absolute Difference](../../plot/GCS_channel_plot/training/JAC/diff_vjp_990.png){width="100%"}
+
+<!-- ## When Random Variable of FIM, $Y$, is only Pressure
+We also compute FIM of pressure only.
+
+### FIM obtained
+
+### The Each Rows of FIM
+
+### Eigenvector of FIM
+
+### Vector Jacobian Product Obtained -->
+
+
+## Future Step
+
+1.  TODO: Debug NS eigenvector and vjp.
+2.  TODO: Want to generate the full dataset for Francis' dataset (which might take 1 or 2 days).
+3.  TODO: Try it on Jason's dataset (Now that we fixed the problem with FIM computation, we are optimistic about the experiment, so we want to try it again.)
+
+## Question
+
+1.  Do we want to train both models for a longer time?

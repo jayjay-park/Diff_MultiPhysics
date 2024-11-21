@@ -1,0 +1,28 @@
+lr: 0.0005
+weight_decay: 0.0005
+num_epoch: 500
+num_train: 100
+num_test: 50
+num_sample: 100
+threshold: 1e-08
+batch_size: 50
+loss_type: JAC
+nx: 64
+ny: 64
+noise: 0.01
+reg_param: 0.95
+nu: 0.001
+time_step: 0.01
+num_vec: 1
+Loss Type: JAC
+Batch Size: 50
+Training Loss: 4.3364424584524386e-07
+Test Loss: 8.137496934068622e-07
+MSE diff: 8.672884916904877e-07
+
+masekd:
+PBI SSIM Full: 81.6896857544229 PBI forward losses 4.328266732045449e-05 posterior MSE: tensor(39392.7656)
+MSE SSIM Full: 83.67500155845808 MSE forward losses: 4.972149326931685e-05 posterior MSE: tensor(35256.9570)
+
+unmasked
+

@@ -1,0 +1,361 @@
+---
+title: "Data Generation: Incompressible Navier Stokes"
+author:
+  - "Jayjay, Tuna, Jason, Richard"
+date: "9/30/24"
+format:
+  arxiv-pdf:
+    keep-tex: true  
+    linenumbers: false
+    doublespacing: false
+    runninghead: "A Preprint"
+  arxiv-html: default
+  html: 
+    self-contained: true
+    grid: 
+      margin-width: 350px
+execute: 
+  echo: fenced
+# publish:
+#   quarto-pub: true  # Ensure the correct target is specified
+reference-location: margin
+citation-location: margin
+bibliography: skeleton.bib
+---
+
+In this document, we cover dataset and FIM generation for incompressible Navier Stokes.
+
+# Incompressible Naiver Stokes
+
+-   We follow dataset generation scheme from Physics-Informed Neural Operator.
+-   For the purpose of validation, we currently form full Fisher Infromation Matrix and then compute eigenvector.
+-   Our next step will be low rank approximation or trace estimation so that we don't have to form the full matrix.
+
+## 
+
+## Dataset
+
+Our dataset consists of $2000$ pairs of $\{K, S^t(K)\}_{t=1}^8$.
+
+::: {#fig-K layout-ncol="2"}
+![K0](../../data/Ks_0.png){#fig-surus width="80%"}
+
+![K1](../../data/Ks_1.png){#fig-hanno width="80%"}
+
+Example Permeability Model
+:::
+
+::: {#fig-S layout-nrow="2"}
+![Time Series of Saturation of K0](../../data/Snew_series.png){#fig-S0 width="100%"}
+
+![Time Series of Saturation of K1](../../data/Snew_series1.png){#fig-S1 width="100%"}
+
+Example Saturation Time Series
+:::
+
+## Fisher Information Matrix
+
+<!-- Define Fisher Information Matrix -->
+
+-   To find the optimal number of observations, $M$, we visualize eigenvector and vector jacobian product.
+-   We observe that as $M$ increases, the clearer we see the boundary of the permeabiltiy, which will be more informative during training and inference. [^1]
+-   Given 1 pair of dataset, $\{K, S^t(K)\}^8_{t=1}$, we get a single FIM.
+
+[^1]: [Note on Learning Problem](https://www.overleaf.com/1149716711hxnvfbyfpzvb#a799ce).
+
+### Computing Fisher Information Matrix for each datapoint
+
+We consider a realistic scenario when we only have access to samples, but not distribution. When $N$ is number of samples and $X \in \mathbb{R}^{d \times d}$, neural network model $F_{nn}$ learns mapping from $X_i \rightarrow Y_i$. For each pair of $\left\{X_i, Y_i \right\}^N_{i=1}$, we generate $\left\{FIM_i\right\}_{i=1}^{N}$.
+
+-   $N$ : number of data points, $\left\{X_i, Y_i \right\}$
+-   $M$ : number of observation, $Y$
+
+> $$ \left\{ X_i \right\}^N_{i=1} \sim p_X(X), \: \epsilon \sim \mathcal{N}(0, \Sigma), \: \Sigma = I
+> $$ For a single data pair, we generate multiple observations. $$Y_{i, J} = F(X_i) + \epsilon_{i, J}, \quad where \left\{ \epsilon_{i,J}\right\}^{N,M}_{i,J= 1,1}$$ As we assumed Gaussian, we define likelihood as following. $$p(Y_{i,J}|X_i) = e^{-\frac{1}{2}\|Y_{i,J}-F(X_i)\|^2_2}$$ $$log \: p(Y_{i,J}|X_i) \approx \frac{1}{\Sigma}\|Y_{i,J}-F(X_i)\|^2_2$$ A FIM for a single data pair $i$ is: $$FIM_i = \mathbb{E}_{Y_{i, \{J\}^m_{i=1}} \sim p(Y_{i,J}|X_i)} \left[ \left(\nabla log \: p(Y_{i,J}|X_i)\right)\left(\nabla log \: p(Y_{i,J}|X_i)\right)^T\right]$$
+
+### How does FIM change as number of observation increases?
+
+FIM is expectation of covariance of derivative of log likelihood. As we expected, we see clearer definition in diagonal relationship as $M$ increases.
+
+::: {#fig-fim layout-ncol="3"}
+![M = 1](../../data/FIM/FIM0_sub0.png){width="100%"}
+
+![M = 10](../../data/FIM/FIM0_sub0_multi_10.png){width="100%"}
+
+![M = 100](../../data/FIM/FIM0_sub0_multi_100.png){width="100%"}
+
+Change in FIM\[:256, :256\] of single data pair $\{K, S^t(K)\}^8_{t=1}$ as number of observation, $M$ increases
+:::
+
+### Making Sense of FIM obtained
+
+> Still, does our FIM make sense? How can we better understand what FIM is representing?
+
+Let's look at the first row of the FIM and reshape it to \[64, 64\].
+
+::: {#fig-fimrow layout-ncol="3"}
+![FIM\[0,:\]](../../data/N=100/FIM_first_row_multi_100.png){width="100%"}
+
+![FIM\[1,:\]](../../data/N=100/FIM_sec_row_multi_100.png){width="100%"}
+
+![FIM\[2,:\]](../../data/N=100/FIM_third_row_multi_100.png){width="100%"}
+
+Fist, Second, and Third row in FIM
+:::
+
+-   Like we expected from the definition of FIM, we observe each plot is just different linear transformation of $\nabla log p(\{S^t\}^8_{t=1}|K)$
+-   As we will see from below, each rows in FIM is noisy version of its eigenvector.
+
+### How does eigenvectors of FIM look like as $M$ increases?
+
+#### $M = 1$ (Single Observation)
+
+::: {#fig-eig layout-ncol="3"}
+![First Eigenvector](../../data/N=1/FIM_1_first_eig.png){width="100%"}
+
+![Second Eigenvector](../../data/N=1/FIM_1_sec_eig.png){width="100%"}
+
+![Third Eigenvector](../../data/N=1/FIM_1_third_eig.png){width="100%"}
+
+First three largest eigenvector of FIM
+:::
+
+-   Even when FIM is computed with single observation, we see that the largest eigenvector has the most definition in the shape of permeability. Rest of eigenvector looks more like noise.
+
+#### $M = 10$
+
+::: {#fig-eig10 layout-ncol="3"}
+![First Eigenvector](../../data/N=10/FIM_10_first_eig.png){width="100%"}
+
+![Second Eigenvector](../../data/N=10/FIM_10_sec_eig.png){width="100%"}
+
+![Third Eigenvector](../../data/N=10/FIM_10_third_eig.png){width="100%"}
+
+First three largest eigenvector of FIM
+:::
+
+#### $M = 100$
+
+::: {#fig-eig100 layout-ncol="3"}
+![First Eigenvector](../../data/N=100/FIM_first_eig.png){width="100%"}
+
+![Second Eigenvector](../../data/N=100/FIM_sec_eig.png){width="100%"}
+
+![Third Eigenvector](../../data/N=100/FIM_third_eig.png){width="100%"}
+
+First three largest eigenvector of FIM
+:::
+
+#### $M = 1000$
+
+::: {#fig-eig1000 layout-ncol="3"}
+![First Eigenvector](../../data/N=1000/FIM_1000_first_eig.png){width="100%"}
+
+![Second Eigenvector](../../data/N=1000/FIM_1000_sec_eig.png){width="100%"}
+
+![Third Eigenvector](../../data/N=1000/FIM_1000_third_eig.png){width="100%"}
+
+First three largest eigenvector of FIM
+:::
+
+-   As $M$ increases, we observe flow through the channel clearer.
+-   We see the boundary of permeability gets clearer.
+-   In general, it gets less noisy.
+
+### How does vector Jacobian product look like as $M$ increases?
+
+::: {#fig-eig1000 layout="[[1, 1], [1,1]]"}
+![vjp ($M=1$)](../../data/N=1/FIM_1_vjp.png){width="100%"}
+
+![vjp ($M=10$)](../../data/N=10/FIM_10_vjp.png){width="100%"}
+
+![vjp ($M=100$)](../../data/N=100/FIM_100_vjp.png){width="100%"}
+
+![vjp ($M=1000$)](../../data/N=1000/FIM_1000_vjp.png){width="100%"}
+
+Normalized Vector Jacobian Product when vector is the largest eigenvector
+:::
+
+-   We observe that vector Jacobian product looks more like saturation rather than permeability.
+-   As $M$ increases, scale in color bar also increases.
+-   One possible conclusion:
+    -   vjp tells us the location in the spatial distribution (likelihood space) where there exists the largest variation, thus have the most information on parameter.
+    -   $J^Tv$, when $v$ is the largest eigenvector of FIM, is projecting Jacobian onto direction of maximum sensitivity.
+
+# Incompressible Navier Stokes
+
+## Dataset
+
+::: {#fig-vort layout-ncol="2"}
+![Vorticity at $t=0$](../../plot/NS_plot/input.png){width="100%"}
+
+![Vorticity at $t=40$](../../plot/NS_plot/output.png){width="100%"}
+
+The first and the last vorticity in a single time series
+:::
+
+Our dataset consists of 50 pairs of $\{\varphi^{t-1}(x_0), \varphi^t(x_0)\}^T_{t=1}$, where $T=44$. Initial vorticities are a Gaussian Random Fields.
+
+## Fisher Information Matrix
+
+### How do we compute FIM?
+
+$FIM = \left(\nabla log p( \varphi^t(x_0) | \varphi^0(x_0))\right)\left(\nabla log p( \varphi^t(x_0) | \varphi^0(x_0))\right)^T$
+
+-   Just means that we are computing FIM with respect to the initial vorticity, $\varphi^t(x_0)$.
+
+### How does FIM looks like as $M$ changes?
+
+::: {#fig-fim_NS layout="[1, 1]"}
+
+![$M=10$](../../plot/NS_plot/10/fim_sub_0_9_t=0.png){width="100%"}
+
+![$M=100$](../../plot/NS_plot/100/fim_sub_0_9_t=0.png){width="100%"}
+
+FIM\[:100, :100\] of varying $M$
+:::
+
+### Making Sense of FIM obtained
+
+> Still, does our FIM make sense? How can we better understand what FIM is representing?
+
+Let's look at the first row of the Fisher Information Matrix and reshape it to \[64,64\].
+
+::: {#fig-eig100 layout-ncol="2"}
+![FIM\[0, :\]](../../plot/NS_plot/FIM/past/fim_sub_reshape_0.png){width="100%"}
+
+![Input Vorticity](../../plot/NS_plot/input.png){width="100%"}
+
+Comparison of the input parameter with the first element of FIM
+:::
+
+Also, let's look at how the first row of the FIM changes as time evolves. When $M=10$,
+
+::: {#fig-fim_NS layout="[[1, 1, 1, 1, 1], [1,1,1,1,1]]"}
+![$t=1$](../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=0.png){width="100%"}
+
+![$t=5$](../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=4.png){width="100%"}
+
+![$t=10$](../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=9.png){width="100%"}
+
+![$t=15$](../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=14.png){width="100%"}
+
+![$t=20$](../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=19.png){width="100%"}
+
+![$t=25$](../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=24.png){width="100%"}
+
+![$t=30$](../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=29.png){width="100%"}
+
+![$t=35$](../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=34.png){width="100%"}
+
+![$t=40$](../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=39.png){width="100%"}
+
+![$t=44$](../../plot/NS_plot/10_past/fim_sub_reshape_0_9_t=43.png){width="100%"}
+
+The evolution of the first row of FIM
+:::
+
+<!-- 10/4 update -->
+### Single FIM for single data points in a single time series
+A single time series, $\{\varphi^{t}(x_0)\}^T_{t=1}$, consists of multiple data points.
+
+Given such time series,
+![Example Time Series](../../plot/NS_plot/10/trajx_0.png){width="100%"}
+
+When $M=10$, we look at the first row of FIM.
+
+::: {#fig-fim_NS layout="[[1, 1, 1, 1, 1], [1,1,1,1,1]]"}
+![$t=1$](../../plot/NS_plot/10/fim_sub_reshape_0_9_t=0.png){width="100%"}
+
+![$t=2$](../../plot/NS_plot/10/fim_sub_reshape_0_9_t=1.png){width="100%"}
+
+![$t=3$](../../plot/NS_plot/10/fim_sub_reshape_0_9_t=2.png){width="100%"}
+
+![$t=4$](../../plot/NS_plot/10/fim_sub_reshape_0_9_t=3.png){width="100%"}
+
+![$t=5$](../../plot/NS_plot/10/fim_sub_reshape_0_9_t=4.png){width="100%"}
+
+![$t=6$](../../plot/NS_plot/10/fim_sub_reshape_0_9_t=5.png){width="100%"}
+
+![$t=7$](../../plot/NS_plot/10/fim_sub_reshape_0_9_t=6.png){width="100%"}
+
+![$t=8$](../../plot/NS_plot/10/fim_sub_reshape_0_9_t=7.png){width="100%"}
+
+![$t=9$](../../plot/NS_plot/10/fim_sub_reshape_0_9_t=8.png){width="100%"}
+
+![$t=10$](../../plot/NS_plot/10/fim_sub_reshape_0_9_t=9.png){width="100%"}
+
+The evolution of the first row of FIM
+:::
+
+### Single FIM for single time series
+
+<!-- ### Eigenvector
+
+::: {#fig-eigs layout="[[1, 1, 1], [1,1,1], [1,1,1], [1,1,1]]"}
+
+![$N=1$, $v_1$](../../plot/NS_plot/FIM/num_obs=1/1_eigenvec0_0.png){ width=100%}
+
+![$N=1$, $v_2$](../../plot/NS_plot/FIM/num_obs=1/1_eigenvec1_0.png){ width=100%}
+
+![$N=1$, $v_3$](../../plot/NS_plot/FIM/num_obs=1/1_eigenvec2_0.png){ width=100%}
+
+
+![$N=10$, $v_1$](../../plot/NS_plot/FIM/num_obs=10/10_eigenvec0_0.png){ width=100%}
+
+![$N=10$, $v_2$](../../plot/NS_plot/FIM/num_obs=10/10_eigenvec1_0.png){ width=100%}
+
+![$N=10$, $v_3$](../../plot/NS_plot/FIM/num_obs=10/10_eigenvec2_0.png){ width=100%}
+
+
+![$N=100$, $v_1$](../../plot/NS_plot/FIM/num_obs=100/100_eigenvec0_0.png){ width=100%}
+
+![$N=100$, $v_2$](../../plot/NS_plot/FIM/num_obs=100/100_eigenvec1_0.png){ width=100%}
+
+![$N=100$, $v_3$](../../plot/NS_plot/FIM/num_obs=100/100_eigenvec2_0.png){ width=100%}
+
+
+![$N=1000$, $v_1$](../../plot/NS_plot/FIM/num_obs=1000/1000_eigenvec0_0.png){ width=100%}
+
+![$N=1000$, $v_2$](../../plot/NS_plot/FIM/num_obs=1000/1000_eigenvec1_0.png){ width=100%}
+
+![$N=1000$, $v_3$](../../plot/NS_plot/FIM/num_obs=1000/1000_eigenvec2_0.png){ width=100%}
+
+
+First three eigenvectors of FIM of varying $N$.
+:::
+
+- **General Trend**:
+  + The first eigenvector looks very concentrated on certain point and second, third eigenvectors look more noisy. 
+  + Also, the range of scale is bigger in the first eigenvector, and then for the second and third eigenvectors, the magnitude becomes close to 0. 
+
+- **Interpretation of $v_1$**
+  + The gradient of the vorticity will tend to change rapidly in regions where the vorticity field exhibits significant local variation. This typically corresponds to areas where there is a sharp transition between regions of high and low vorticity.
+  + The concentrated point in the first eigenvector, $v_1$, is likely, the point with the biggest spatial variation in terms of vorticity.
+  + Then $v_2$ and $v_3$ focuses on boundaries as well.
+
+- **Interpreting the impact of $N$**
+  + When $N=1$, the concentration point is on the boundary, which is likely not the point with highest varition.  -->
+<!-- ### Vector Jacobian Product
+
+::: {#fig-vjp layout-ncol=3}
+![vjp ($N=1$)](../../plot/NS_plot/FIM/num_obs=1/1_vjp_0.png){ width=100%}
+
+![vjp ($N=10$)](../../plot/NS_plot/FIM/num_obs=10/10_vjp_0.png){ width=100%}
+
+![vjp ($N=100$)](../../plot/NS_plot/FIM/num_obs=100/100_vjp_0.png){ width=100%}
+
+Vector Jacobian Product when vector is the largest eigenvector
+::: -->
+
+<!-- [^1]: To learn more, read [Quarto](https://www.quarto.org) or visit [Quarto's Github](https://www.github.com/quarto-dev/quarto-cli). -->
+
+## Future Step
+
+1.  TODO: Debug NS eigenvector and vjp.
+2.  TODO: Want to generate the full dataset for Francis' dataset (which might take 1 or 2 days).
+3.  TODO: Try it on Jason's dataset (Now that we fixed the problem with FIM computation, we are optimistic about the experiment, so we want to try it again.)
+
+## Question
+
+1.  What would be the optimal number for observations, $M$ when computing Fisher Information Matrix?

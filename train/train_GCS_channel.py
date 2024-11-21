@@ -274,13 +274,13 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
     print("Device: ", device)
 
     model = FNO(
-        in_channels=8,
-        out_channels=8,
+        in_channels=1,
+        out_channels=1,
         decoder_layer_size=128,
-        num_fno_layers=6,
-        num_fno_modes=[33, 33],
+        num_fno_layers=5,
+        num_fno_modes=[8, 15, 15],
         padding=3,
-        dimension=2,
+        dimension=3,
         latent_channels=64
     ).to(device)
 
@@ -340,33 +340,34 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
         
         for X, Y in dataloader:
             X, Y = X.cuda().float(), Y.cuda().float()
+            X = X.unsqueeze(1)
+            Y = Y.unsqueeze(1)
             # print("X", "Y", X.shape, Y.shape) #[batchsize, 8, 64, 64]
             
             # MSE 
-            optimizer.zero_grad()
             if args.loss_type == "MSE":
                 output = model(X)
                 loss = criterion(output.squeeze(), Y.squeeze()) / torch.norm(Y)
-                target = True_j[idx].cuda()
-                output, vjp_func = torch.func.vjp(model, X)
+                # target = True_j[idx].cuda()
+                # output, vjp_func = torch.func.vjp(model, X)
                 # vjp_out_onevec = vjp_func(cur_vec_batch[:, :, e])[0] # -> learned vjp
                 # vjp_out = vjp_func(vec_batch[idx])[0]
                 # jac_diff = criterion(target, vjp_out)
                 # vjp_out = torch.flip(vjp_out, dims=[-1])
                 if (epoch == 1) and (idx == 0):
                     plot_multiple_abs(Y[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/true_sat_{epoch}.png")
-                    plot_multiple_abs(Y[10].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/true_sat2_{epoch}.png")
+                    plot_multiple_abs(Y[1].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/true_sat2_{epoch}.png")
                     # plot_multiple(vec_batch[idx][0].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/true_eigvec_{epoch}.png", cmap)
                     # plot_multiple(target[0].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/true_vjp_{epoch}.png", cmap)
                     # plot_multiple(target[1].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/true_vjp_{epoch}_1.png", cmap)
                 if (epoch % 10 == 0) and (idx == 0):
-                    print(Y.shape)
+                    print(output.shape)
                     plot_multiple_abs(output[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/learned_sat_{epoch}.png")
                     plot_multiple_abs(output[1].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/learned_sat2_{epoch}.png")
                     # plot_multiple(vjp_out[0].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/learned_vjp_{epoch}.png", cmap)
                     # plot_multiple(vjp_out[1].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/learned_vjp_{epoch}_1.png", cmap)
-                    plot_multiple_abs(abs(output[0]-Y[0]).detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/diff_sat_{epoch}.png", "magma")
-                    plot_multiple_abs(abs(output[1]-Y[1]).detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/diff_sat2_{epoch}.png", "magma")
+                    plot_multiple_abs(abs(output[0]-Y[0]).squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/diff_sat_{epoch}.png", "magma")
+                    plot_multiple_abs(abs(output[1]-Y[1]).squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/diff_sat2_{epoch}.png", "magma")
                     # plot_multiple_abs(abs(target[0]-vjp_out[0]).detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/diff_vjp_{epoch}.png", "magma")
                     # plot_multiple_abs(abs(target[1]-vjp_out[1]).detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/MSE/diff_vjp_{epoch}_1.png", "magma")
             elif args.loss_type == "Sobolev":
@@ -387,6 +388,9 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
                 print("idx", idx)
                 # 1. update vjp and eigenvector
                 target_vjp = True_j[idx].cuda()
+                target_vjp = target_vjp.unsqueeze(1)  # Shape becomes [5, 1, 8, 15, 64, 64]
+                target_vjp = target_vjp.permute(0, 1, 3, 2, 4, 5) # shape [5, 1, 15, 8, 64, 64]
+                print("target vjp", target_vjp.shape)
                 cur_vec_batch = vec_batch[idx] # 50 x 8 x 3 x 64 x 64
                 # vjp_out = torch.zeros(dataloader.batch_size, 8, args.num_vec, 64, 64, requires_grad=True).to('cuda')
                 
@@ -396,40 +400,43 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
                 vjp_out_list = []
                 for e in range(args.num_vec):
                     print("e", e)
-                    vjp_out_onevec = vjp_func(cur_vec_batch[:, :, e])[0] # -> learned vjp
+                    vjp_out_onevec = vjp_func(cur_vec_batch[:, :, e].unsqueeze(1))[0] # -> learned vjp
                     # vjp_out[:, :, e] = vjp_out_onevec
                     vjp_out_list.append(vjp_out_onevec)
                     vjp_out = torch.stack(vjp_out_list, dim=2)
-                    print("vjp_out", vjp_out.shape)
-                    # plot_multiple_abs(cur_vec_batch[0, :, e].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/debug/true_vec_first_sample_{e}.png")
-                    # plot_multiple_abs(vjp_out_onevec[0].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/debug/learned_vjp_first_sample_{e}.png")
-                    # plot_multiple_abs(vjp_out_onevec[1].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/debug/learned_vjp_second_sample_{e}.png")
+                # vjp_out = torch.func.vmap(lambda vec_batch: vjp_func(vec_batch.unsqueeze(1))[0], in_dims=2, chunk_size=2)(cur_vec_batch)
+                # vjp_out = vjp_out.permute(1,2,0,3,4,5)
+                print("vjp_out", vjp_out.shape)
+                # plot_multiple_abs(cur_vec_batch[0, :, e].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/debug/true_vec_first_sample_{e}.png")
+                plot_multiple_abs(vjp_out[0, : ,0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/learned_vjp_first_sample.png", "seismic")
+                # plot_multiple_abs(vjp_out_onevec[1].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/debug/learned_vjp_second_sample_{e}.png")
     
                 if (epoch == 1) and (idx == 0):
-                    plot_single(X[0,0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/K_{epoch}.png")
-                    plot_single(X[1,0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/K2_{epoch}.png")
+                    plot_multiple(X[0,0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/K_{epoch}.png")
+                    plot_multiple(X[1,0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/K2_{epoch}.png")
                     plot_multiple_abs(Y[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/true_sat_{epoch}.png")
                     plot_multiple_abs(Y[1].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/true_sat2_{epoch}.png")
-                    plot_multiple(cur_vec_batch[0, :, 0].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/true_eigvec_{epoch}.png", cmap)
-                    plot_multiple(cur_vec_batch[1, :, 0].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/true_eigvec2_{epoch}.png", cmap)
-                    plot_multiple(target_vjp[0, :, 0].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/true_vjp_{epoch}.png", cmap)
-                    plot_multiple(target_vjp[1, :, 0].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/true_vjp_{epoch}_1.png", cmap)
+                    plot_multiple(cur_vec_batch[0, :, 0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/true_eigvec_{epoch}.png", cmap)
+                    plot_multiple(cur_vec_batch[1, :, 0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/true_eigvec2_{epoch}.png", cmap)
+                    plot_multiple(target_vjp[0, :, 0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/true_vjp_{epoch}.png", cmap)
+                    plot_multiple(target_vjp[1, :, 0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/true_vjp_{epoch}_1.png", cmap)
                 if (epoch % 10 == 0) and (idx == 0):
                     plot_multiple_abs(output[0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/learned_sat_{epoch}.png")
                     plot_multiple_abs(output[1].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/learned_sat2_{epoch}.png")
-                    plot_multiple(vjp_out[0, :, 0].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/learned_vjp_{epoch}.png", cmap)
-                    plot_multiple(vjp_out[1, :, 0].detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/learned_vjp_{epoch}_1.png", cmap)
-                    plot_multiple_abs(abs(output[0]-Y[0]).detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/diff_sat_{epoch}.png", "magma")
-                    plot_multiple_abs(abs(output[1]-Y[1]).detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/diff_sat2_{epoch}.png", "magma")
-                    plot_multiple_abs(abs(target_vjp[0, :, 0]-vjp_out[0, :, 0]).detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/diff_vjp_{epoch}.png", "magma")
-                    plot_multiple_abs(abs(target_vjp[1, :, 0]-vjp_out[1, :, 0]).detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/diff_vjp_{epoch}_1.png", "magma")
+                    plot_multiple(vjp_out[0, :, 0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/learned_vjp_{epoch}.png", cmap)
+                    plot_multiple(vjp_out[1, :, 0].squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/learned_vjp_{epoch}_1.png", cmap)
+                    plot_multiple_abs(abs(output[0]-Y[0]).squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/diff_sat_{epoch}.png", "magma")
+                    plot_multiple_abs(abs(output[1]-Y[1]).squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/diff_sat2_{epoch}.png", "magma")
+                    plot_multiple_abs(abs(target_vjp[0, :, 0]-vjp_out[0, :, 0]).squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/diff_vjp_{epoch}.png", "magma")
+                    plot_multiple_abs(abs(target_vjp[1, :, 0]-vjp_out[1, :, 0]).squeeze().detach().cpu().numpy(), f"../plot/GCS_channel_vec_{args.num_vec}/training/JAC/diff_vjp_{epoch}_1.png", "magma")
                 # print(target.shape, vjp_out.shape, vec_batch[idx].shape)
                 jac_diff = criterion(target_vjp, vjp_out)
                 jac_misfit += jac_diff.detach().cpu().numpy()
                 loss += jac_diff * args.reg_param
 
-            loss.backward(retain_graph=True)
-            optimizer.step()
+                optimizer.zero_grad()
+                loss.backward(retain_graph=True)
+                optimizer.step()
             full_loss += loss.item()
             idx += 1
         
@@ -445,6 +452,8 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
         model.eval()
         with torch.no_grad():
             for X_test, Y_test in test_dataloader:
+                X_test = X_test.unsqueeze(1)
+                Y_test = Y_test.unsqueeze(1)
                 X_test, Y_test = X_test.cuda().float(), Y_test.cuda().float()
                 output = model(X_test)
                 test_loss = criterion(output.squeeze(), Y_test) / torch.norm(Y_test) # relative error
@@ -462,7 +471,7 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
             torch.save(model.state_dict(), f"../test_result/best_model_FNO_GCS_vec_{args.num_vec}_{loss_type}.pth")
             # Save plot
             X_test, Y_test = next(iter(test_dataloader))
-            X_test, Y_test = X_test.cuda().float(), Y_test.cuda().float()
+            X_test, Y_test = X_test.unsqueeze(1).cuda().float(), Y_test.unsqueeze(1).cuda().float()
             with torch.no_grad():
                 Y_pred = model(X_test)
             plot_path = f"../plot/GCS_channel_vec_{args.num_vec}/FNO_GCS_lowest_vec_{args.num_vec}_{loss_type}_True.png"
@@ -533,7 +542,8 @@ def main(logger, args, loss_type, dataloader, test_dataloader, True_j, vec, roll
     logger.info("%s: %s", "Loss Type", str(loss_type))
     logger.info("%s: %s", "Batch Size", str(args.batch_size))
     logger.info("%s: %s", "Training Loss", str(full_loss/len(dataloader)))
-    logger.info("%s: %s", "Test Loss", str(full_test_loss/len(test_dataloader)))
+    logger.info("%s: %s", "Final Test Loss", str(full_test_loss/len(test_dataloader)))
+    logger.info("%s: %s", "Lowest Test Loss", str(lowest_loss))
     logger.info("%s: %s", "MSE diff", str(mse_diff[-1]))
 
     return model
@@ -578,21 +588,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--num_epoch", type=int, default=500)
-    parser.add_argument("--num_train", type=int, default=50)
+    parser.add_argument("--num_epoch", type=int, default=200)
+    parser.add_argument("--num_train", type=int, default=200)
     parser.add_argument("--num_test", type=int, default=50)
     parser.add_argument("--num_sample", type=int, default=100)
     # parser.add_argument("--num_init", type=int, default=60)
     parser.add_argument("--threshold", type=float, default=1e-8)
-    parser.add_argument("--batch_size", type=int, default=50)
-    parser.add_argument("--loss_type", default="MSE", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
+    parser.add_argument("--batch_size", type=int, default=5)
+    parser.add_argument("--loss_type", default="JAC", choices=["MSE", "JAC", "Sobolev", "Dissipative"])
     parser.add_argument("--nx", type=int, default=64)
     parser.add_argument("--ny", type=int, default=64)
     parser.add_argument("--noise", type=float, default=0.01)
-    parser.add_argument("--reg_param", type=float, default=0.65) # 0.1 -> 2
+    parser.add_argument("--reg_param", type=float, default=10.0) # 0.1 -> 2
     parser.add_argument("--nu", type=float, default=0.001) # Viscosity
     parser.add_argument("--time_step", type=float, default=0.01) # time step
-    parser.add_argument("--num_vec", type=int, default=1)
+    parser.add_argument("--num_vec", type=int, default=10)
 
     args = parser.parse_args()
 
@@ -622,7 +632,7 @@ if __name__ == "__main__":
         set_x = set_x[0]
 
     # Read the each file s_idx: sample index
-    for s_idx in range(1, 151):
+    for s_idx in range(1, args.num_train+args.num_test+1):
 
         with h5py.File(f'../FNO-NF.jl/scripts/num_obs_20/states_sample_{s_idx}_nobs_20.jld2', 'r') as f1, \
             h5py.File(f'../FNO-NF.jl/scripts/num_obs_20/FIM_eigvec_sample_{s_idx}_nobs_20.jld2', 'r') as f2, \
@@ -658,8 +668,8 @@ if __name__ == "__main__":
                 print(len(set_y), s_idx)
                 plot_multiple_abs(set_y[s_idx-1], f"../plot/GCS_channel_vec_{args.num_vec}/data_saturation:{s_idx}.png")
                 if args.loss_type == "JAC":
-                    plot_multiple(torch.tensor(set_vjp[s_idx-1]), f"../plot/GCS_channel_vec_{args.num_vec}/data_vjp:{s_idx}.png")
-                    plot_multiple(set_eig[s_idx-1], f"../plot/GCS_channel_vec_{args.num_vec}/data_eigvec:{s_idx}.png")
+                    plot_multiple(torch.tensor(set_vjp[s_idx-1][0]), f"../plot/GCS_channel_vec_{args.num_vec}/data_vjp:{s_idx}.png", "seismic")
+                    # plot_multiple(set_eig[s_idx-1], f"../plot/GCS_channel_vec_{args.num_vec}/data_eigvec:{s_idx}.png")
 
 
     print("len or:", len(set_x), len(set_x[0]), len(set_y), len(set_vjp))
