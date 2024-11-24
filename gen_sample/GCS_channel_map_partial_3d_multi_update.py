@@ -146,12 +146,32 @@ def plot_diff_with_shared_colorbar_all(figures, t, ssim_mse, ssim_pbi, path, cma
 
     # Plot the first two subplots (with individual color bars)
     for i, ax in enumerate(axes[:2]):
-        im = ax.imshow(figures[i], cmap='Blues')
+        # if i == 0:
+        #     # Display the first image
+        #     im = ax.imshow(image1, cmap='Blues', alpha=0.7)  # Adjust alpha for transparency
+        #     # Display the second image
+        #     im = ax.imshow(image2, cmap='Reds', alpha=0.5)  # Adjust alpha for transparency
+        #     ax.set_title(f'True K0')
+        # elif i == 1:
+        #     im = ax.imshow(figures[i], cmap='Blues')
+        #     ax.set_title(f'H(K0)')
+        # fig.colorbar(im, ax=ax, fraction=0.045, pad=0.06)
         if i == 0:
-            ax.set_title(f'True K0')
+            # Display the first image with overlapping second image
+            im1 = ax.imshow(figures[0], cmap='Blues', alpha=0.9)  # First image
+            im2 = ax.imshow(figures[1], cmap='Reds', alpha=0.4)  # Second image
+            ax.set_title('True K0')
+            
+            # Add colorbars for both images if needed
+            fig.colorbar(im1, ax=ax, fraction=0.045, pad=0.06)
+            # Optionally add a second colorbar for `im2` if necessary:
+            # fig.colorbar(im2, ax=ax, fraction=0.045, pad=0.06)
+
         elif i == 1:
-            ax.set_title(f'H(K0)')
-        fig.colorbar(im, ax=ax, fraction=0.045, pad=0.06)
+            # Display the second subplot image
+            im = ax.imshow(figures[i], cmap='Blues')
+            ax.set_title('H(K0)')
+            fig.colorbar(im, ax=ax, fraction=0.045, pad=0.06)
         ax.set_xticks([])
         ax.set_yticks([])
 
@@ -304,13 +324,13 @@ set_x, set_y = [], []
 batch_size = 1
 MSE_output, JAC_output = [], []
 ssim_value = 0.
-num_vec = 20
+num_vec = 10
 start_idx = 400
-end_idx = 500
+end_idx = 402
 # ssim = StructuralSimilarityIndexMeasure()
 
 
-num_col = 0
+num_col = 5
 kernel_size = 11  # Example kernel size (should be odd)
 sigma = 20.0  # Standard deviation of the Gaussian
 learning_rate = 100.0 # [0.5, 1.0, 5.0, 20.0, 50.0, 100.0]
@@ -341,19 +361,19 @@ JAC_model = FNO(
     ).to(device)
 
 # JAC_path = f"../test_result/best_model_FNO_GCS_JAC.pth"
-# JAC_path = f"../test_result/best_model_FNO_GCS_vec_{num_vec}_JAC_train=50.pth"
-# C:\Users\D2A2\Diff_MultiPhysics\test_result\best_model_FNO_GCS_vec_10_JAC_train=5_eig=10.pth
-# JAC_path = "../test_result/best_model_FNO_GCS_vec_10_JAC_train=5_eig=10.pth"
+JAC_path = f"../test_result/best_model_FNO_GCS_vec_{num_vec}_JAC_train=50.pth"
+
 '''
-num sample=3
+# JAC_path = "../test_result/best_model_FNO_GCS_vec_10_JAC_train=5_eig=10.pth"
+num sample=3, eig=10, train=5
 Epoch 100 - PBI SSIM Full: 2.2954256577249, MSE SSIM Full: 2.2876617832768718
 Epoch 100 - PBI MSE Full: 1931.91845703125, MSE MSE Full: 1980.6263427734375
 Epoch 100 - PBI Forward Loss: 0.00045383395627141, MSE Forward Loss: 0.0005023191915825009
 '''
 
-JAC_path = "../test_result/best_model_FNO_GCS_vec_20_JAC_train=5.pth"
+# JAC_path = "../test_result/best_model_FNO_GCS_vec_20_JAC_train=5.pth"
 '''
-num sample=3
+num sample=3, eig=20, train=5
 Epoch 100 - PBI SSIM Full: 2.337537771488906, MSE SSIM Full: 2.2876617832768718
 Epoch 100 - PBI MSE Full: 1658.1009521484375, MSE MSE Full: 1980.6263427734375
 Epoch 100 - PBI Forward Loss: 0.0006113179260864854, MSE Forward Loss: 0.0005023191915825009
@@ -362,8 +382,8 @@ JAC_model.load_state_dict(torch.load(JAC_path))
 JAC_model.eval()
 
 # MSE_path = f"../test_result/best_model_FNO_GCS_MSE.pth"
-# MSE_path = f"../test_result/best_model_FNO_GCS_vec_1_MSE_train=50.pth"
-MSE_path = f"../test_result/best_model_FNO_GCS_vec_0_MSE_train=5.pth"
+MSE_path = f"../test_result/best_model_FNO_GCS_vec_1_MSE_train=50.pth"
+# MSE_path = f"../test_result/best_model_FNO_GCS_vec_0_MSE_train=5.pth"
 MSE_model.load_state_dict(torch.load(MSE_path))
 MSE_model.eval()
 
@@ -403,6 +423,7 @@ for s_idx in range(start_idx, end_idx):
 # set_y = torch.stack(set_y[900:])
 set_y = torch.stack(set_y)
 org_set_y = set_y
+print("set_y", set_y.shape)
 plot_multiple_abs(org_set_y[0], f'GCS_partial/vec={num_vec}/S_org', cmap='Blues')
 # three column.
 first_col_idx = 0
@@ -411,7 +432,25 @@ last_col_idx = set_y.size(2) - 1
 
 # Create a mask that keeps only the first, middle, and last columns
 mask = torch.zeros_like(set_y)
-if num_col == 3:
+if num_col == 10:
+    mask[:, :, :, first_col_idx] = 1
+    mask[:, :, :, 5] = 1
+    mask[:, :, :, 15] = 1
+    mask[:, :, :, 20] = 1
+    mask[:, :, :, 25] = 1
+    mask[:, :, :, 30] = 1
+    mask[:, :, :, 35] = 1
+    mask[:, :, :, 40] = 1
+    mask[:, :, :, 45] = 1
+    mask[:, :, :, last_col_idx] = 1
+elif num_col == 5:
+    mask[:, :, :, first_col_idx] = 1
+    mask[:, :, :, middle_col_idx] = 1
+    mask[:, :, :, 20] = 1
+    mask[:, :, :, 40] = 1
+    mask[:, :, :, last_col_idx] = 1
+    # mask[:, :, :, last_col_idx] = 1
+elif num_col == 3:
     mask[:, :, :, first_col_idx] = 1
     mask[:, :, :, middle_col_idx] = 1
     mask[:, :, :, last_col_idx] = 1
@@ -423,7 +462,7 @@ elif num_col == 1:
 
 
 # Apply the mask to set all other columns to 0
-# set_y = set_y * mask
+set_y = set_y * mask
 
 plot_multiple_abs(set_y[0], f'GCS_partial/vec={num_vec}/S_masked3', cmap='Blues')
 set_y = set_y.reshape(-1, batch_size, 8, 64, 64)
@@ -452,10 +491,11 @@ def least_squares_posterior_estimation(model, input_data, true_data, model_type,
         print("shape", output.shape, true_data.shape) #torch.Size([100, 1, 8, 64, 64]) torch.Size([100, 8, 64, 64])
         # output = torch.clamp(output, min=0, max=0.9)
         # print("input", input_data.shape) [batchsize, 8, 64, 64]
-        if batch_num < 12:
+        if batch_num < 10:
             plot_multiple_abs(input_data.clone().detach().cpu()[0], f'GCS_partial/vec={num_vec}/lr={learning_rate}/batch_{batch_num}/iter_{model_type}_{iteration}', cmap='Blues')
         # mask is well operator here
-        output = output #* mask[:100].cuda().float()
+        print("mask", mask.shape)
+        output = output * mask[batch_num].cuda().float()
         # loss = mse_loss(output[:, :, 15:-15], true_data[:, :, 15:-15])
         # print("loss type:", model_type, torch.min(output), torch.max(output))
         for batch in [0]:
@@ -508,9 +548,36 @@ print(org_x.shape)
 zero_X = torch.mean(org_x, dim=0).unsqueeze(dim=0) #[64, 64]
 print("first", zero_X.shape)
 zero_X = zero_X.unsqueeze(1).repeat(1, 8, 1, 1)  # Reshape [100, 8, 64, 64]
-# print(zero_X.shape)
 zero_X = zero_X.repeat(batch_size, 1, 1, 1).to(device)
-# print(zero_X.shape)
+
+def interpolate_perm(matrix):
+    interpolated_matrix = matrix.clone()
+    num_batch, repeat, rows, cols = matrix.size()
+    matrix = matrix[0,0]
+    interpolated_matrix = interpolated_matrix[0,0]
+    
+    # Find non-zero columns (any non-zero values in a column)
+    non_zero_columns = (matrix != 20).any(dim=0).nonzero(as_tuple=True)[0]
+    
+    # Iterate over pairs of adjacent non-zero columns
+    for i in range(len(non_zero_columns) - 1):
+        col_start, col_end = non_zero_columns[i], non_zero_columns[i + 1]
+        
+        for row_idx in range(rows):
+            # Get start and end values for the current row in these columns
+            start_val = matrix[row_idx, col_start].item()
+            end_val = matrix[row_idx, col_end].item()
+            
+            # Skip rows where both start and end are zero
+            if start_val == 0 and end_val == 0:
+                continue
+            
+            # Perform linear interpolation for the range
+            interp_values = torch.linspace(start_val, end_val, col_end - col_start + 1)
+            interpolated_matrix[row_idx, col_start:col_end + 1] = interp_values
+    
+    return interpolated_matrix
+
 
 # MLE: Iterate over epochs first
 for epoch in range(0, num_epoch, 10):
@@ -521,14 +588,36 @@ for epoch in range(0, num_epoch, 10):
 
     # run it for one time!!!
     if epoch == 0:
+        set_interpolate_X = []
         posterior_estimate_jac_all, posterior_estimate_mse_all = [], []
         mse_loss_all, jac_loss_all = [], []
         for i in range(num_batch):
             print("batch", i)
             X = set_x[i].to(device).float()  # Input permeability [batch_size, 8, 64, 64]
-            if i < 12:
+            print("zero X", zero_X.shape, X.shape)
+            if i < 1:
                 plot_multiple_abs(X[0].clone().detach().cpu(), f'GCS_partial/vec={num_vec}/lr={learning_rate}/batch_{i}/True_K', cmap='Blues')
             Y_true = set_y[i].to(device).float()  # True observation S [batch_size, 8, 64, 64]
+
+            # update X to have info on the well location.
+            if num_col == 5:
+                # masked_X = X * mask[i].cuda().float()
+                for col in [first_col_idx, middle_col_idx, 5, 20, 50]:
+                    # masked_X = X * mask[i].cuda().float()
+                    zero_X[:, :, :, col] = X[:, :, :, col] 
+                '''
+                interpolate_X = interpolate_perm(masked_X)
+                print("after", interpolate_X.shape)
+                interpolate_X = interpolate_X.unsqueeze(0).repeat(8, 1, 1)  # Reshape [100, 8, 64, 64]
+                print("after", interpolate_X.shape)
+                interpolate_X = interpolate_X.unsqueeze(0).repeat(batch_size, 1, 1, 1).to(device)
+                print("after", interpolate_X.shape)
+                set_interpolate_X.append(interpolate_X)
+                '''
+                set_interpolate_X.append(zero_X.detach().cpu())
+            if i == 0:
+                # plot_single_abs(interpolate_X.squeeze().detach().cpu()[0], f"mask_updated.png", "Blues")
+                plot_single_abs(zero_X.squeeze().detach().cpu()[0], f"mask_updated.png", "Blues")
 
             # Call MLE for each sample in the batch within the current epoch
             posterior_estimate_mse, mse_losses, min_mse, min_jac, max_mse, max_jac = least_squares_posterior_estimation(
@@ -563,6 +652,9 @@ for epoch in range(0, num_epoch, 10):
         plt.legend(fontsize=15)
         plt.grid(True)
         plt.savefig(f'GCS_partial/vec={num_vec}/lr={learning_rate}/loss_plot_{learning_rate}_all.png')
+        set_interpolate_X = torch.stack(set_interpolate_X)
+        set_interpolate_X = set_interpolate_X.reshape(num_batch, batch_size, 8, 64, 64)
+        print("interpolate X", set_interpolate_X.shape)
 
     # Calculations for SSIM and MSE, for every 50th epoch
     # torch.stack(posterior_estimate_jac).shape: [1, 5, 8, 64, 64]
@@ -571,21 +663,17 @@ for epoch in range(0, num_epoch, 10):
     for i in range(num_batch):
         X = set_x[i].to(device).float()
         for b in range(batch_size):
-            print("b", b)
+            print("b", b, set_interpolate_X.shape)
             # mask
             mask_S = (Y_true[b][-1] != 0).int().detach().cpu()
             masked_X = X[b][-1].detach().cpu()
             masked_X[mask_S == 0] = 20
             masked_posterior_estimate_mse_all = posterior_estimate_mse_all[i][epoch][b].clone().mean(dim=0).detach().cpu().numpy()
             masked_posterior_estimate_mse_all[mask_S == 0] = 20
-            # masked_posterior_estimate_mse_all[:15,:] = 20
-            # masked_posterior_estimate_mse_all[45:,:] = 20
             masked_mse = masked_posterior_estimate_mse_all
 
             masked_posterior_estimate_jac_all = posterior_estimate_jac_all[i][epoch][b].clone().mean(dim=0).detach().cpu().numpy()
             masked_posterior_estimate_jac_all[mask_S == 0] = 20
-            # masked_posterior_estimate_jac_all[:15,:] = 20
-            # masked_posterior_estimate_jac_all[45:,:] = 20
             masked_jac = masked_posterior_estimate_jac_all
 
             # [num_batch, num_epoch, batch_size, 8, 64, 64]
@@ -607,7 +695,7 @@ for epoch in range(0, num_epoch, 10):
             
             path = f'GCS_partial/vec={num_vec}/lr={learning_rate}/posterior_{num_col}_{epoch}_{i}_{b}'
             plot_diff_with_shared_colorbar_all(
-                [true_x, zero_X[b][-1].detach().cpu(), pe_mse, pe_jac, abs_diff_mse, abs_diff_jac], 
+                [true_x, set_interpolate_X[i][b][-1].detach().cpu(), pe_mse, pe_jac, abs_diff_mse, abs_diff_jac], 
                 epoch, ssim_mse, ssim_jac, path, cmap='magma'
             )
             # ssim_all_mse += ssim_mse
